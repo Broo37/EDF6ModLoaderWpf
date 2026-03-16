@@ -1,0 +1,452 @@
+﻿<Window x:Class="EDF6ModLoaderWpf.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:ui="http://schemas.modernwpf.com/2019"
+        xmlns:local="clr-namespace:EDF6ModLoaderWpf"
+        mc:Ignorable="d"
+        Title="{Binding WindowTitle, FallbackValue='🛡️ EDF Mod Manager'}"
+        Height="680" Width="960"
+        MinHeight="500" MinWidth="750"
+        WindowStartupLocation="CenterScreen"
+        ui:WindowHelper.UseModernWindowStyle="True">
+
+    <Window.Resources>
+        <!-- CheckBox style for DataGrid: override ModernWPF MinWidth so the box
+             is not clipped in narrow columns -->
+        <Style x:Key="DataGridCheckBoxStyle" TargetType="CheckBox" BasedOn="{StaticResource {x:Type CheckBox}}">
+            <Setter Property="MinWidth" Value="0"/>
+            <Setter Property="MinHeight" Value="0"/>
+            <Setter Property="HorizontalAlignment" Value="Center"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+
+        <!-- Small button style for inline Up/Down controls -->
+        <Style x:Key="InlineSmallButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+            <Setter Property="MinWidth" Value="0"/>
+            <Setter Property="MinHeight" Value="0"/>
+            <Setter Property="Padding" Value="4,2"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+
+        <!-- BooleanToVisibilityConverter -->
+        <BooleanToVisibilityConverter x:Key="BoolToVis"/>
+    </Window.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>   <!-- Header / paths -->
+            <RowDefinition Height="Auto"/>   <!-- Toolbar -->
+            <RowDefinition Height="*"/>      <!-- DataGrid -->
+            <RowDefinition Height="Auto"/>   <!-- Conflict report panel -->
+            <RowDefinition Height="Auto"/>   <!-- Toast area -->
+            <RowDefinition Height="Auto"/>   <!-- Status bar -->
+        </Grid.RowDefinitions>
+
+        <!-- ═══ HEADER ═══ -->
+        <Border Grid.Row="0" Padding="16,12" Background="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="12"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="12"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="4"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <!-- App title -->
+                <TextBlock Grid.Row="0" Grid.ColumnSpan="2"
+                           Text="{Binding WindowTitle}" FontSize="20" FontWeight="SemiBold"/>
+                <Button Grid.Row="0" Grid.Column="2" Content="⚙ Settings"
+                        Command="{Binding OpenSettingsCommand}" VerticalAlignment="Center"/>
+
+                <!-- ── Game Selector ── -->
+                <StackPanel Grid.Row="2" Grid.ColumnSpan="3">
+                    <TextBlock Text="SELECT GAME:" FontWeight="SemiBold" FontSize="11"
+                               Foreground="Gray" Margin="0,0,0,6"/>
+                    <ItemsControl ItemsSource="{Binding AvailableGames}">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <StackPanel Orientation="Horizontal"/>
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Button Margin="0,0,8,0" Padding="14,6" MinWidth="130"
+                                        Command="{Binding DataContext.SwitchGameCommand,
+                                            RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                        CommandParameter="{Binding GameId}">
+                                    <Button.Style>
+                                        <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+                                            <Setter Property="BorderThickness" Value="1"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsActiveGame}" Value="True">
+                                                    <Setter Property="BorderBrush" Value="{DynamicResource SystemControlHighlightAccentBrush}"/>
+                                                    <Setter Property="BorderThickness" Value="2"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Button.Style>
+                                    <StackPanel HorizontalAlignment="Center">
+                                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                            <!-- Color dot per game -->
+                                            <TextBlock VerticalAlignment="Center" Margin="0,0,6,0">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Setter Property="Text" Value="🔴"/>
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding GameId}" Value="EDF41">
+                                                                <Setter Property="Text" Value="🔵"/>
+                                                            </DataTrigger>
+                                                            <DataTrigger Binding="{Binding GameId}" Value="EDF5">
+                                                                <Setter Property="Text" Value="🟢"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
+                                            <TextBlock Text="{Binding ShortName}" FontWeight="SemiBold"
+                                                       VerticalAlignment="Center"/>
+                                        </StackPanel>
+                                        <TextBlock FontSize="10" HorizontalAlignment="Center" Margin="0,2,0,0">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="Text" Value="⚙️ Not Set Up"/>
+                                                    <Setter Property="Foreground" Value="Gray"/>
+                                                    <Style.Triggers>
+                                                        <MultiDataTrigger>
+                                                            <MultiDataTrigger.Conditions>
+                                                                <Condition Binding="{Binding IsConfigured}" Value="True"/>
+                                                                <Condition Binding="{Binding IsActiveGame}" Value="True"/>
+                                                            </MultiDataTrigger.Conditions>
+                                                            <Setter Property="Text" Value="✅ Active"/>
+                                                            <Setter Property="Foreground" Value="Green"/>
+                                                        </MultiDataTrigger>
+                                                        <MultiDataTrigger>
+                                                            <MultiDataTrigger.Conditions>
+                                                                <Condition Binding="{Binding IsConfigured}" Value="True"/>
+                                                                <Condition Binding="{Binding IsActiveGame}" Value="False"/>
+                                                            </MultiDataTrigger.Conditions>
+                                                            <Setter Property="Text" Value="configured"/>
+                                                            <Setter Property="Foreground" Value="Gray"/>
+                                                        </MultiDataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+                                    </StackPanel>
+                                </Button>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+
+                <!-- Game path -->
+                <TextBlock Grid.Row="4" Grid.Column="0" Text="Game Path:" FontWeight="SemiBold"
+                           VerticalAlignment="Center" Margin="0,0,8,0"/>
+                <TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding GameRootDirectory}"
+                           VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                <Button Grid.Row="4" Grid.Column="2" Content="📁 Game"
+                        Command="{Binding OpenGameFolderCommand}" Padding="10,4" HorizontalAlignment="Center" Width="91"/>
+
+                <!-- Library path -->
+                <TextBlock Grid.Row="6" Grid.Column="0" Text="Mods Lib:" FontWeight="SemiBold"
+                           VerticalAlignment="Center" Margin="0,0,8,0"/>
+                <TextBlock Grid.Row="6" Grid.Column="1" Text="{Binding ModsLibraryDirectory}"
+                           VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                <Button Grid.Row="6" Grid.Column="2" Content="📦 Lib"
+                        Command="{Binding OpenModsLibraryCommand}" Padding="10,4" HorizontalAlignment="Center" Width="91"/>
+            </Grid>
+        </Border>
+
+        <!-- ═══ TOOLBAR ═══ -->
+        <WrapPanel Grid.Row="1" Orientation="Horizontal" Margin="16,8">
+            <Button Content="🔄 Refresh" Command="{Binding RefreshCommand}" Margin="0,0,8,0"/>
+            <Button Content="✅ Enable All" Command="{Binding EnableAllCommand}" Margin="0,0,8,0"/>
+            <Button Content="❌ Disable All" Command="{Binding DisableAllCommand}" Margin="0,0,8,0"/>
+
+            <Separator Style="{StaticResource {x:Static ToolBar.SeparatorStyleKey}}" Margin="4,2,12,2"/>
+
+            <Button Content="🔃 Sort by Name" Command="{Binding SortByNameCommand}" Margin="0,0,8,0"/>
+            <Button Content="📋 Load Order View" Command="{Binding ShowLoadOrderViewCommand}" Margin="0,0,8,0"/>
+            <Button Content="🗂️ All Mods View" Command="{Binding ShowAllModsViewCommand}" Margin="0,0,8,0"/>
+            <Button Content="📂 Group View" Command="{Binding ToggleGroupViewCommand}" Margin="0,0,8,0"/>
+
+            <Separator Style="{StaticResource {x:Static ToolBar.SeparatorStyleKey}}" Margin="4,2,12,2"/>
+
+            <Button Content="↩️ Undo" Command="{Binding UndoCommand}"
+                    IsEnabled="{Binding CanUndo}" Margin="0,0,8,0"/>
+
+            <Separator Style="{StaticResource {x:Static ToolBar.SeparatorStyleKey}}" Margin="4,2,12,2"/>
+
+            <Button Content="🚀 Apply Mods" Command="{Binding ApplyModsCommand}"
+                    IsEnabled="{Binding HasPendingChanges}" Margin="0,0,8,0"
+                    FontWeight="SemiBold"/>
+
+            <!-- Loading indicator -->
+            <ui:ProgressRing IsActive="{Binding IsBusy}" Width="24" Height="24"
+                             Margin="12,0,0,0" VerticalAlignment="Center"/>
+        </WrapPanel>
+
+        <!-- ═══ MOD LIST ═══ -->
+        <DataGrid x:Name="ModsDataGrid" Grid.Row="2" ItemsSource="{Binding Mods}"
+                  SelectedItem="{Binding SelectedMod, Mode=TwoWay}"
+                  AutoGenerateColumns="False"
+                  CanUserAddRows="False"
+                  CanUserDeleteRows="False"
+                  IsReadOnly="False"
+                  SelectionMode="Single"
+                  HeadersVisibility="Column"
+                  GridLinesVisibility="Horizontal"
+                  Margin="16,0,16,0"
+                  VerticalScrollBarVisibility="Auto"
+                  AllowDrop="True"
+                  PreviewMouseLeftButtonDown="DataGrid_PreviewMouseLeftButtonDown"
+                  PreviewMouseMove="DataGrid_PreviewMouseMove"
+                  DragOver="DataGrid_DragOver"
+                  Drop="DataGrid_Drop">
+
+            <DataGrid.GroupStyle>
+                <GroupStyle>
+                    <GroupStyle.ContainerStyle>
+                        <Style TargetType="GroupItem">
+                            <Setter Property="Template">
+                                <Setter.Value>
+                                    <ControlTemplate TargetType="GroupItem">
+                                        <Expander IsExpanded="True" BorderThickness="0,0,0,1" BorderBrush="Gray">
+                                            <Expander.Header>
+                                                <StackPanel Orientation="Horizontal">
+                                                    <TextBlock Text="📂 " FontSize="13"/>
+                                                    <TextBlock FontWeight="Bold" FontSize="13" VerticalAlignment="Center">
+                                                        <TextBlock.Text>
+                                                            <MultiBinding StringFormat="{}{0}  ({1} mods)">
+                                                                <Binding Path="Name"/>
+                                                                <Binding Path="ItemCount"/>
+                                                            </MultiBinding>
+                                                        </TextBlock.Text>
+                                                    </TextBlock>
+                                                </StackPanel>
+                                            </Expander.Header>
+                                            <ItemsPresenter/>
+                                        </Expander>
+                                    </ControlTemplate>
+                                </Setter.Value>
+                            </Setter>
+                        </Style>
+                    </GroupStyle.ContainerStyle>
+                </GroupStyle>
+            </DataGrid.GroupStyle>
+
+            <DataGrid.Columns>
+                <!-- Active checkbox -->
+                <DataGridTemplateColumn Header="✅" Width="40" IsReadOnly="True">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <CheckBox IsChecked="{Binding IsActive, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                       Style="{StaticResource DataGridCheckBoxStyle}"
+                                       Click="ModCheckBox_Click"/>
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+
+                <!-- Load Order number (editable) -->
+                <DataGridTemplateColumn Header="#" Width="45" SortMemberPath="LoadOrder">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <TextBlock Text="{Binding LoadOrderDisplay}" FontWeight="Bold"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                    <DataGridTemplateColumn.CellEditingTemplate>
+                        <DataTemplate>
+                            <TextBox Text="{Binding LoadOrder, UpdateSourceTrigger=LostFocus}"
+                                     HorizontalAlignment="Stretch" VerticalAlignment="Center"
+                                     HorizontalContentAlignment="Center"
+                                     LostFocus="LoadOrderTextBox_LostFocus"
+                                     PreviewTextInput="LoadOrderTextBox_PreviewTextInput"/>
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellEditingTemplate>
+                </DataGridTemplateColumn>
+
+                <!-- Group name (editable) -->
+                <DataGridTemplateColumn Header="📂 Group" Width="Auto" MinWidth="80" SortMemberPath="Group">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <TextBlock Text="{Binding Group}" VerticalAlignment="Center"
+                                       Foreground="CornflowerBlue" FontStyle="Italic"/>
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                    <DataGridTemplateColumn.CellEditingTemplate>
+                        <DataTemplate>
+                            <TextBox Text="{Binding Group, UpdateSourceTrigger=Explicit}"
+                                     HorizontalAlignment="Stretch" VerticalAlignment="Center"
+                                     LostFocus="GroupTextBox_LostFocus"/>
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellEditingTemplate>
+                </DataGridTemplateColumn>
+
+                <!-- Mod name -->
+                <DataGridTextColumn Header="📦 Mod Name" Binding="{Binding ModName}"
+                                    Width="*" MinWidth="180" IsReadOnly="True"/>
+
+                <!-- Subfolders -->
+                <DataGridTextColumn Header="📁 Subfolders" Binding="{Binding Subfolders}"
+                                    Width="Auto" MinWidth="100" IsReadOnly="True"/>
+
+                <!-- Status with colour -->
+                <DataGridTemplateColumn Header="🔄 Status" Width="Auto" MinWidth="90">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <TextBlock Text="{Binding Status}" FontWeight="SemiBold"
+                                       VerticalAlignment="Center" HorizontalAlignment="Center">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding Status}" Value="Active">
+                                                <Setter Property="Foreground" Value="Green"/>
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding Status}" Value="Inactive">
+                                                <Setter Property="Foreground" Value="Gray"/>
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding Status}" Value="✅ Wins">
+                                                <Setter Property="Foreground" Value="Green"/>
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding Status}" Value="⚠️ Overridden">
+                                                <Setter Property="Foreground" Value="OrangeRed"/>
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding Status}" Value="⚠️ Partial">
+                                                <Setter Property="Foreground" Value="Orange"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+
+                <!-- Up / Down reorder buttons -->
+                <DataGridTemplateColumn Header="⬆⬇" Width="60" IsReadOnly="True">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                <Button Content="⬆" ToolTip="Move Up (higher priority)"
+                                        Style="{StaticResource InlineSmallButton}"
+                                        Command="{Binding DataContext.MoveUpCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}"
+                                        CommandParameter="{Binding}" Margin="0,0,2,0"/>
+                                <Button Content="⬇" ToolTip="Move Down (lower priority)"
+                                        Style="{StaticResource InlineSmallButton}"
+                                        Command="{Binding DataContext.MoveDownCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}"
+                                        CommandParameter="{Binding}"/>
+                            </StackPanel>
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+
+                <!-- Info (description tooltip) -->
+                <DataGridTemplateColumn Header="ℹ️" Width="35" IsReadOnly="True">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <TextBlock Text="ℹ️" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                       Cursor="Hand">
+                                <TextBlock.ToolTip>
+                                    <ToolTip MaxWidth="320">
+                                        <StackPanel>
+                                            <TextBlock Text="{Binding ModName}" FontWeight="Bold" Margin="0,0,0,4"/>
+                                            <TextBlock Text="{Binding Description}" TextWrapping="Wrap"/>
+                                            <TextBlock Margin="0,4,0,0" FontSize="11" Foreground="Gray">
+                                                <Run Text="Subfolders: "/><Run Text="{Binding Subfolders, Mode=OneWay}"/>
+                                            </TextBlock>
+                                            <TextBlock FontSize="11" Foreground="Gray">
+                                                <Run Text="Date: "/><Run Text="{Binding DateAdded, StringFormat=yyyy-MM-dd, Mode=OneWay}"/>
+                                            </TextBlock>
+                                        </StackPanel>
+                                    </ToolTip>
+                                </TextBlock.ToolTip>
+                            </TextBlock>
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+            </DataGrid.Columns>
+        </DataGrid>
+
+        <!-- ═══ CONFLICT REPORT PANEL ═══ -->
+        <Border Grid.Row="3" Margin="16,8,16,0" Padding="12" CornerRadius="6"
+                Background="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}"
+                BorderBrush="Orange" BorderThickness="1"
+                Visibility="{Binding IsConflictPanelVisible, Converter={StaticResource BoolToVis}}">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+
+                <!-- Panel header -->
+                <DockPanel Grid.Row="0">
+                    <TextBlock Text="ℹ️  CONFLICT REPORT" FontWeight="Bold" FontSize="13"
+                               VerticalAlignment="Center"/>
+                    <Button DockPanel.Dock="Right" Content="✕ Hide" HorizontalAlignment="Right"
+                            Style="{StaticResource InlineSmallButton}"
+                            Command="{Binding HideConflictPanelCommand}" Padding="8,3"/>
+                </DockPanel>
+
+                <!-- Conflict list -->
+                <ItemsControl Grid.Row="1" ItemsSource="{Binding ConflictReport}"
+                              Margin="0,6,0,0" MaxHeight="120">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <VirtualizingStackPanel/>
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.Template>
+                        <ControlTemplate TargetType="ItemsControl">
+                            <ScrollViewer VerticalScrollBarVisibility="Auto" MaxHeight="120">
+                                <ItemsPresenter/>
+                            </ScrollViewer>
+                        </ControlTemplate>
+                    </ItemsControl.Template>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <TextBlock Margin="0,1" FontSize="12" TextWrapping="Wrap">
+                                <Run Text="⚠️ " Foreground="Orange"/>
+                                <Run Text="{Binding FileName, Mode=OneWay}" FontWeight="SemiBold"/>
+                                <Run Text="  →  &quot;"/>
+                                <Run Text="{Binding WinnerModName, Mode=OneWay}" Foreground="Green" FontWeight="SemiBold"/>
+                                <Run Text="&quot; (#"/>
+                                <Run Text="{Binding WinnerLoadOrder, Mode=OneWay}"/>
+                                <Run Text=") wins, overrides &quot;"/>
+                                <Run Text="{Binding LoserModName, Mode=OneWay}" Foreground="OrangeRed"/>
+                                <Run Text="&quot; (#"/>
+                                <Run Text="{Binding LoserLoadOrder, Mode=OneWay}"/>
+                                <Run Text=")"/>
+                            </TextBlock>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+
+                <!-- Tip -->
+                <TextBlock Grid.Row="2" Margin="0,6,0,0" FontSize="11" Foreground="Gray"
+                           Text="💡 Tip: Drag mods in the list or use ⬆⬇ buttons to change priority!"/>
+            </Grid>
+        </Border>
+
+        <!-- ═══ TOAST NOTIFICATION AREA ═══ -->
+        <StackPanel x:Name="ToastPanel" Grid.Row="4" Margin="16,4,16,0"/>
+
+        <!-- ═══ STATUS BAR ═══ -->
+        <Border Grid.Row="5" Padding="16,8"
+                Background="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}">
+            <TextBlock Text="{Binding StatusText}" FontSize="12"/>
+        </Border>
+    </Grid>
+</Window>
