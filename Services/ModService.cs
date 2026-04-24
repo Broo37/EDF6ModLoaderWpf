@@ -91,6 +91,7 @@ public sealed class ModService
 
     /// <summary>
     /// Copies a file with retry logic to handle transient file locks (antivirus, indexer, etc.).
+    /// On the final attempt the IOException filter does not match, so the exception propagates to the caller.
     /// </summary>
     private static async Task CopyWithRetryAsync(string source, string destination)
     {
@@ -105,11 +106,13 @@ public sealed class ModService
             {
                 await Task.Delay(RetryDelayMs * (i + 1));
             }
+            // Final attempt: IOException propagates to caller — no silent swallow.
         }
     }
 
     /// <summary>
     /// Deletes a file with retry logic to handle transient file locks.
+    /// On the final attempt the IOException filter does not match, so the exception propagates to the caller.
     /// </summary>
     private static async Task DeleteWithRetryAsync(string path)
     {
@@ -124,6 +127,7 @@ public sealed class ModService
             {
                 await Task.Delay(RetryDelayMs * (i + 1));
             }
+            // Final attempt: IOException propagates to caller — no silent swallow.
         }
     }
 

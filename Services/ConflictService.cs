@@ -63,14 +63,6 @@ public sealed class ConflictService
     }
 
     /// <summary>
-    /// Given two mods that share a file, returns the one with the higher load order (the winner).
-    /// </summary>
-    public static ModEntry ResolveConflict(ModEntry modA, ModEntry modB)
-    {
-        return modA.LoadOrder >= modB.LoadOrder ? modA : modB;
-    }
-
-    /// <summary>
     /// Builds the final "winning file map" for all active mods.
     /// Key = relative file path (e.g. "Weapon\weapon_data.bin"), Value = mod that wins.
     /// For each file, the mod with the highest load order among all owners wins.

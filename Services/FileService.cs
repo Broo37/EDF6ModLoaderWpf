@@ -19,6 +19,9 @@ public sealed class FileService
 
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
 
+    private const int MaxRetries = 5;
+    private const int RetryDelayMs = 200;
+
     /// <summary>
     /// Ensures [GameRoot]\Mods\ and all standard subfolders exist.
     /// Returns true when any folder was newly created.
@@ -130,13 +133,22 @@ public sealed class FileService
             var source = Path.Combine(modFolderPath, relPath);
             var destination = Path.Combine(modsDir, relPath);
 
-            // Ensure the target directory exists
             var destDir = Path.GetDirectoryName(destination);
             if (destDir is not null)
                 Directory.CreateDirectory(destDir);
 
-            // Copy with overwrite to handle conflicts gracefully
-            File.Copy(source, destination, overwrite: true);
+            for (int i = 0; i < MaxRetries; i++)
+            {
+                try
+                {
+                    await Task.Run(() => File.Copy(source, destination, overwrite: true));
+                    break;
+                }
+                catch (IOException) when (i < MaxRetries - 1)
+                {
+                    await Task.Delay(RetryDelayMs * (i + 1));
+                }
+            }
         }
 
         return relativeFiles;
@@ -153,19 +165,28 @@ public sealed class FileService
     {
         var modsDir = Path.Combine(gameRootDir, "Mods");
 
-        await Task.Run(() =>
+        foreach (var relPath in relativeFiles)
         {
-            foreach (var relPath in relativeFiles)
-            {
-                // Skip files that belong to another active mod
-                if (filesOwnedByOtherMods.Contains(relPath))
-                    continue;
+            if (filesOwnedByOtherMods.Contains(relPath))
+                continue;
 
-                var fullPath = Path.Combine(modsDir, relPath);
-                if (File.Exists(fullPath))
+            var fullPath = Path.Combine(modsDir, relPath);
+            if (!File.Exists(fullPath))
+                continue;
+
+            for (int i = 0; i < MaxRetries; i++)
+            {
+                try
+                {
                     File.Delete(fullPath);
+                    break;
+                }
+                catch (IOException) when (i < MaxRetries - 1)
+                {
+                    await Task.Delay(RetryDelayMs * (i + 1));
+                }
             }
-        });
+        }
     }
 
     /// <summary>

@@ -86,7 +86,11 @@ public partial class MainViewModel : ObservableObject
     /// <summary>Whether the first-time setup (Welcome screen) is needed.</summary>
     public bool NeedsFirstTimeSetup { get; private set; }
 
-    public System.Windows.Controls.Panel? NotificationPanel { get; set; }
+    /// <summary>Wired up by MainWindow to forward toast calls to the UI layer.</summary>
+    public Action<string, bool>? ShowToastAction { get; set; }
+
+    /// <summary>Wired up by MainWindow to open the settings dialog; returns true when settings were saved.</summary>
+    public Func<Task<bool>>? ShowSettingsDialog { get; set; }
 
     /// <summary>AppData directory for the active game's registry.</summary>
     private string ActiveRegistryDir =>
@@ -383,7 +387,7 @@ public partial class MainViewModel : ObservableObject
         IsRefreshing = true;
         try
         {
-            _loadOrderService.TryUndo(Mods.ToList());
+            _loadOrderService.TryUndo(Mods);
             CanUndo = _loadOrderService.CanUndo;
             MarkPendingChanges();
             ShowToast("↩️ Undo applied.");
@@ -476,10 +480,10 @@ public partial class MainViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private void ShowAllModsView()
+    private async Task ShowAllModsViewAsync()
     {
         LoadOrderViewActive = false;
-        _ = RefreshAsync();
+        await RefreshAsync();
     }
 
     // ── Conflict Panel ───────────────────────────────────────────────
@@ -495,25 +499,39 @@ public partial class MainViewModel : ObservableObject
     [RelayCommand]
     private void OpenGameFolder()
     {
-        if (ActiveGame is not null && Directory.Exists(ActiveGame.GameRootPath))
+        if (ActiveGame is null || !Directory.Exists(ActiveGame.GameRootPath)) return;
+        try
+        {
             Process.Start("explorer.exe", ActiveGame.GameRootPath);
+        }
+        catch (Exception ex)
+        {
+            _ = SettingsService.LogErrorAsync(ex);
+            ShowToast("Could not open game folder.", isError: true);
+        }
     }
 
     [RelayCommand]
     private void OpenModsLibrary()
     {
-        if (ActiveGame is not null && Directory.Exists(ActiveGame.ModLibraryPath))
+        if (ActiveGame is null || !Directory.Exists(ActiveGame.ModLibraryPath)) return;
+        try
+        {
             Process.Start("explorer.exe", ActiveGame.ModLibraryPath);
+        }
+        catch (Exception ex)
+        {
+            _ = SettingsService.LogErrorAsync(ex);
+            ShowToast("Could not open mods library folder.", isError: true);
+        }
     }
 
     [RelayCommand]
     private async Task OpenSettingsAsync()
     {
-        var settingsWindow = new Views.SettingsWindow(_settingsService);
-        if (settingsWindow.ShowDialog() == true)
-        {
+        if (ShowSettingsDialog is null) return;
+        if (await ShowSettingsDialog())
             await ReloadSettingsAsync();
-        }
     }
 
     public async Task ReloadSettingsAsync()
@@ -609,7 +627,6 @@ public partial class MainViewModel : ObservableObject
 
     private void ShowToast(string message, bool isError = false)
     {
-        if (NotificationPanel is not null)
-            NotificationHelper.ShowToast(NotificationPanel, message, isError);
+        ShowToastAction?.Invoke(message, isError);
     }
 }

@@ -36,12 +36,12 @@ public sealed class LoadOrderService
 
         _undoStack.Push(snapshot);
 
-        // Trim to max history
+        // Trim to max history — keep the most recent MaxUndoHistory entries
         if (_undoStack.Count > MaxUndoHistory)
         {
-            var temp = _undoStack.ToArray().Take(MaxUndoHistory).ToList();
+            var keep = _undoStack.Take(MaxUndoHistory).Reverse().ToList();
             _undoStack.Clear();
-            foreach (var item in temp.AsEnumerable().Reverse())
+            foreach (var item in keep)
                 _undoStack.Push(item);
         }
     }

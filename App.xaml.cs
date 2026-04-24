@@ -23,23 +23,36 @@ namespace EDF6ModLoaderWpf
         {
             base.OnStartup(e);
 
-            // Build the DI container
-            var services = new ServiceCollection();
-            ConfigureServices(services);
-            _serviceProvider = services.BuildServiceProvider();
+            try
+            {
+                // Build the DI container
+                var services = new ServiceCollection();
+                ConfigureServices(services);
+                _serviceProvider = services.BuildServiceProvider();
 
-            // Load saved font so it's stored for all windows
-            var settingsService = _serviceProvider.GetRequiredService<SettingsService>();
-            var settings = await settingsService.LoadAsync();
-            FontHelper.ApplyFont(settings.FontFamily);
+                // Load saved font so it's stored for all windows
+                var settingsService = _serviceProvider.GetRequiredService<SettingsService>();
+                var settings = await settingsService.LoadAsync();
+                FontHelper.ApplyFont(settings.FontFamily);
 
-            // Create and show the main window
-            var mainWindow = new MainWindow();
-            FontHelper.ApplyCurrentFont(mainWindow);
-            var viewModel = _serviceProvider.GetRequiredService<MainViewModel>();
+                // Create and show the main window
+                var mainWindow = new MainWindow();
+                FontHelper.ApplyCurrentFont(mainWindow);
+                var viewModel = _serviceProvider.GetRequiredService<MainViewModel>();
 
-            mainWindow.Show();
-            await mainWindow.InitializeAsync(viewModel);
+                mainWindow.Show();
+                await mainWindow.InitializeAsync(viewModel);
+            }
+            catch (Exception ex)
+            {
+                await SettingsService.LogErrorAsync(ex);
+                MessageBox.Show(
+                    $"The application failed to start:\n\n{ex.Message}",
+                    "Startup Error",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Error);
+                Shutdown(1);
+            }
         }
 
         /// <summary>

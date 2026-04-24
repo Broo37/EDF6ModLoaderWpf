@@ -1,8 +1,10 @@
-﻿using System.Windows;
+﻿using System.ComponentModel;
+using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
 using System.Windows.Input;
 using System.Windows.Media;
+using EDF6ModLoaderWpf.Helpers;
 using EDF6ModLoaderWpf.Models;
 using EDF6ModLoaderWpf.Services;
 using EDF6ModLoaderWpf.ViewModels;
@@ -35,12 +37,13 @@ namespace EDF6ModLoaderWpf
         public async Task InitializeAsync(MainViewModel viewModel)
         {
             _viewModel = viewModel;
-            _viewModel.NotificationPanel = ToastPanel;
-            _viewModel.PropertyChanged += (_, args) =>
+            _viewModel.ShowToastAction = (msg, isError) => NotificationHelper.ShowToast(ToastPanel, msg, isError);
+            _viewModel.ShowSettingsDialog = async () =>
             {
-                if (args.PropertyName == nameof(MainViewModel.IsGroupViewActive))
-                    ApplyGrouping();
+                var win = new SettingsWindow(App.GetService<SettingsService>()) { Owner = this };
+                return win.ShowDialog() == true;
             };
+            _viewModel.PropertyChanged += OnViewModelPropertyChanged;
             DataContext = _viewModel;
 
             await _viewModel.InitializeAsync();
@@ -59,6 +62,19 @@ namespace EDF6ModLoaderWpf
                     Application.Current.Shutdown();
                 }
             }
+        }
+
+        private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs args)
+        {
+            if (args.PropertyName == nameof(MainViewModel.IsGroupViewActive))
+                ApplyGrouping();
+        }
+
+        protected override void OnClosed(EventArgs e)
+        {
+            if (_viewModel is not null)
+                _viewModel.PropertyChanged -= OnViewModelPropertyChanged;
+            base.OnClosed(e);
         }
 
         /// <summary>
@@ -177,8 +193,16 @@ namespace EDF6ModLoaderWpf
                 var newGroup = textBox.Text?.Trim() ?? string.Empty;
                 if (newGroup != mod.Group)
                 {
-                    await _viewModel.SetGroupAsync(mod, newGroup);
-                    ApplyGrouping();
+                    try
+                    {
+                        await _viewModel.SetGroupAsync(mod, newGroup);
+                        ApplyGrouping();
+                    }
+                    catch (Exception ex)
+                    {
+                        await SettingsService.LogErrorAsync(ex);
+                        NotificationHelper.ShowError("Group Error", ex.Message);
+                    }
                 }
             }
         }
