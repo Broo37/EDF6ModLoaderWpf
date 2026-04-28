@@ -27,6 +27,12 @@ public sealed class FileService
     private static readonly HashSet<string> IgnoredImportFileNames =
         new([".DS_Store", "desktop.ini", "Thumbs.db"], StringComparer.OrdinalIgnoreCase);
 
+    private static readonly HashSet<string> ReservedRootFileNames =
+        new(["active_mods.json"], StringComparer.OrdinalIgnoreCase);
+
+    private static readonly HashSet<string> ReservedRootFolderNames =
+        new(["backups"], StringComparer.OrdinalIgnoreCase);
+
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
 
     private const int MaxRetries = 5;
@@ -226,8 +232,8 @@ public sealed class FileService
             return [];
 
         return Directory.GetFiles(modFolderPath, "*", SearchOption.AllDirectories)
-            .Where(f => !f.EndsWith("mod_info.json", StringComparison.OrdinalIgnoreCase))
             .Select(f => Path.GetRelativePath(modFolderPath, f))
+            .Where(IsModPayloadRelativeFile)
             .ToList();
     }
 
@@ -303,7 +309,7 @@ public sealed class FileService
 
     /// <summary>
     /// Loads the active mods registry from the given directory's active_mods.json.
-    /// For multi-game support, this is typically %AppData%\EDFModManager\{gameId}\.
+    /// For multi-game support, this is the active game's [GameRoot]\Mods folder.
     /// </summary>
     public async Task<ActiveModsRegistry> LoadRegistryAsync(string registryDir)
     {
@@ -323,9 +329,23 @@ public sealed class FileService
             {
                 await Task.Delay(200 * (i + 1));
             }
-            catch
+            catch (UnauthorizedAccessException) when (i < 4)
             {
-                return new ActiveModsRegistry();
+                await Task.Delay(200 * (i + 1));
+            }
+            catch (JsonException ex)
+            {
+                await SettingsService.LogErrorAsync(ex);
+                throw new InvalidOperationException(
+                    $"The active mods registry is malformed and was not overwritten: {path}",
+                    ex);
+            }
+            catch (NotSupportedException ex)
+            {
+                await SettingsService.LogErrorAsync(ex);
+                throw new InvalidOperationException(
+                    $"The active mods registry has unsupported JSON content and was not overwritten: {path}",
+                    ex);
             }
         }
 
@@ -353,6 +373,35 @@ public sealed class FileService
             {
                 await Task.Delay(200 * (i + 1));
             }
+        }
+    }
+
+    /// <summary>
+    /// Copies registry state from a legacy directory into the canonical registry directory when needed.
+    /// Existing canonical registry files are never overwritten.
+    /// </summary>
+    public async Task MigrateRegistryAsync(string legacyRegistryDir, string registryDir)
+    {
+        if (string.IsNullOrWhiteSpace(legacyRegistryDir) || string.IsNullOrWhiteSpace(registryDir))
+            return;
+
+        var legacyFullPath = Path.TrimEndingDirectorySeparator(Path.GetFullPath(legacyRegistryDir));
+        var registryFullPath = Path.TrimEndingDirectorySeparator(Path.GetFullPath(registryDir));
+        if (string.Equals(legacyFullPath, registryFullPath, StringComparison.OrdinalIgnoreCase))
+            return;
+
+        var legacyRegistryPath = Path.Combine(legacyFullPath, "active_mods.json");
+        var registryPath = Path.Combine(registryFullPath, "active_mods.json");
+        if (!File.Exists(registryPath) && File.Exists(legacyRegistryPath))
+        {
+            await CopyFileWithRetryAsync(legacyRegistryPath, registryPath);
+        }
+
+        var legacyBackupsPath = Path.Combine(legacyFullPath, "backups");
+        var backupsPath = Path.Combine(registryFullPath, "backups");
+        if (!Directory.Exists(backupsPath) && Directory.Exists(legacyBackupsPath))
+        {
+            await CopyDirectoryAsync(legacyBackupsPath, backupsPath);
         }
     }
 
@@ -622,6 +671,22 @@ public sealed class FileService
         {
             return null;
         }
+    }
+
+    private static bool IsModPayloadRelativeFile(string relativePath)
+    {
+        var normalizedPath = relativePath.Replace(Path.AltDirectorySeparatorChar, Path.DirectorySeparatorChar);
+        var segments = normalizedPath.Split(Path.DirectorySeparatorChar, StringSplitOptions.RemoveEmptyEntries);
+        if (segments.Length == 0)
+            return false;
+
+        if (string.Equals(segments[^1], "mod_info.json", StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        if (segments.Length == 1 && ReservedRootFileNames.Contains(segments[0]))
+            return false;
+
+        return !ReservedRootFolderNames.Contains(segments[0]);
     }
 
     private static List<string> FindDuplicateCandidates(string modsLibraryDir, string sanitizedName, ModInfo? importInfo)
