@@ -1,0 +1,227 @@
+<Window x:Class="EDF6ModLoaderWpf.Views.ApplySummaryWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="http://schemas.modernwpf.com/2019"
+        Title="Apply Summary"
+        Height="720" Width="760"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="CanResize"
+        MinHeight="620"
+        MinWidth="680"
+        ui:WindowHelper.UseModernWindowStyle="True">
+
+    <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVis"/>
+
+        <Style x:Key="SectionBorderStyle" TargetType="Border">
+            <Setter Property="Padding" Value="12"/>
+            <Setter Property="CornerRadius" Value="6"/>
+            <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundBaseLowBrush}"/>
+            <Setter Property="Margin" Value="0,0,0,12"/>
+        </Style>
+    </Window.Resources>
+
+    <Grid Margin="24">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="12"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="12"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="16"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <StackPanel Grid.Row="0">
+            <TextBlock Text="Apply Summary" FontSize="24" FontWeight="SemiBold"/>
+            <TextBlock Margin="0,6,0,0"
+                       Foreground="Gray"
+                       Text="Review the file changes, conflict winners, and risk signals before deploying mods to the game folder."/>
+        </StackPanel>
+
+        <Border Grid.Row="2" Style="{StaticResource SectionBorderStyle}">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="10"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Grid.Row="0" Grid.Column="0" Margin="0,0,12,0">
+                    <TextBlock FontWeight="SemiBold">
+                        <Run Text="Game: "/><Run Text="{Binding Preview.GameDisplayName, Mode=OneWay}"/>
+                    </TextBlock>
+                    <TextBlock Margin="0,4,0,0">
+                        <Run Text="Active Mods: "/><Run Text="{Binding Preview.ActiveModCount, Mode=OneWay}"/>
+                    </TextBlock>
+                    <TextBlock Margin="0,4,0,0">
+                        <Run Text="Winning Files: "/><Run Text="{Binding Preview.WinningFileCount, Mode=OneWay}"/>
+                    </TextBlock>
+                    <TextBlock Margin="0,4,0,0" Text="{Binding LoadoutSummary, Mode=OneWay}" TextWrapping="Wrap"/>
+                </StackPanel>
+
+                <StackPanel Grid.Row="0" Grid.Column="1">
+                    <TextBlock>
+                        <Run Text="Add: "/><Run Text="{Binding Preview.AddedFileCount, Mode=OneWay}"/>
+                    </TextBlock>
+                    <TextBlock Margin="0,4,0,0">
+                        <Run Text="Remove: "/><Run Text="{Binding Preview.RemovedFileCount, Mode=OneWay}"/>
+                    </TextBlock>
+                    <TextBlock Margin="0,4,0,0">
+                        <Run Text="Swap Winners: "/><Run Text="{Binding Preview.ReplacedFileCount, Mode=OneWay}"/>
+                    </TextBlock>
+                    <TextBlock Margin="0,4,0,0">
+                        <Run Text="Conflicted Files: "/><Run Text="{Binding Preview.ConflictFileCount, Mode=OneWay}"/>
+                    </TextBlock>
+                    <TextBlock Margin="0,4,0,0" Foreground="OrangeRed">
+                        <Run Text="High-Risk Mods: "/><Run Text="{Binding Preview.HighRiskModCount, Mode=OneWay}"/>
+                    </TextBlock>
+                </StackPanel>
+
+                <TextBlock Grid.Row="2" Grid.ColumnSpan="2"
+                           Foreground="Gray"
+                           TextWrapping="Wrap"
+                           Text="Apply will create a last-apply backup snapshot, clean previously managed files in the game's Mods folder, copy the current winning files, save the active registry, and refresh conflict status indicators."/>
+            </Grid>
+        </Border>
+
+        <ScrollViewer Grid.Row="4" VerticalScrollBarVisibility="Auto">
+            <StackPanel>
+                <Border Style="{StaticResource SectionBorderStyle}"
+                        Visibility="{Binding ActiveModsSection.HasItems, Converter={StaticResource BoolToVis}}">
+                    <StackPanel>
+                        <DockPanel Margin="0,0,0,8">
+                            <TextBlock Text="Active Load Order" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                            <Button DockPanel.Dock="Right"
+                                    Content="{Binding ActiveModsSection.ToggleLabel}"
+                                    Command="{Binding ActiveModsSection.ToggleExpandedCommand}"
+                                    Visibility="{Binding ActiveModsSection.HasOverflow, Converter={StaticResource BoolToVis}}"
+                                    Padding="10,4"/>
+                        </DockPanel>
+                        <ItemsControl ItemsSource="{Binding ActiveModsSection.VisibleItems}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <TextBlock Margin="0,0,0,4" Text="{Binding}" TextWrapping="Wrap"/>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                </Border>
+
+                <Border Style="{StaticResource SectionBorderStyle}"
+                        Visibility="{Binding AddedFilesSection.HasItems, Converter={StaticResource BoolToVis}}">
+                    <StackPanel>
+                        <DockPanel Margin="0,0,0,8">
+                            <TextBlock Text="Files To Add" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                            <Button DockPanel.Dock="Right"
+                                    Content="{Binding AddedFilesSection.ToggleLabel}"
+                                    Command="{Binding AddedFilesSection.ToggleExpandedCommand}"
+                                    Visibility="{Binding AddedFilesSection.HasOverflow, Converter={StaticResource BoolToVis}}"
+                                    Padding="10,4"/>
+                        </DockPanel>
+                        <ItemsControl ItemsSource="{Binding AddedFilesSection.VisibleItems}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <TextBlock Margin="0,0,0,4" Text="{Binding}" TextWrapping="Wrap"/>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                </Border>
+
+                <Border Style="{StaticResource SectionBorderStyle}"
+                        Visibility="{Binding RemovedFilesSection.HasItems, Converter={StaticResource BoolToVis}}">
+                    <StackPanel>
+                        <DockPanel Margin="0,0,0,8">
+                            <TextBlock Text="Files To Remove" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                            <Button DockPanel.Dock="Right"
+                                    Content="{Binding RemovedFilesSection.ToggleLabel}"
+                                    Command="{Binding RemovedFilesSection.ToggleExpandedCommand}"
+                                    Visibility="{Binding RemovedFilesSection.HasOverflow, Converter={StaticResource BoolToVis}}"
+                                    Padding="10,4"/>
+                        </DockPanel>
+                        <ItemsControl ItemsSource="{Binding RemovedFilesSection.VisibleItems}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <TextBlock Margin="0,0,0,4" Text="{Binding}" TextWrapping="Wrap"/>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                </Border>
+
+                <Border Style="{StaticResource SectionBorderStyle}"
+                        Visibility="{Binding ReplacedFilesSection.HasItems, Converter={StaticResource BoolToVis}}">
+                    <StackPanel>
+                        <DockPanel Margin="0,0,0,8">
+                            <TextBlock Text="Files With New Winners" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                            <Button DockPanel.Dock="Right"
+                                    Content="{Binding ReplacedFilesSection.ToggleLabel}"
+                                    Command="{Binding ReplacedFilesSection.ToggleExpandedCommand}"
+                                    Visibility="{Binding ReplacedFilesSection.HasOverflow, Converter={StaticResource BoolToVis}}"
+                                    Padding="10,4"/>
+                        </DockPanel>
+                        <ItemsControl ItemsSource="{Binding ReplacedFilesSection.VisibleItems}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <TextBlock Margin="0,0,0,4" Text="{Binding}" TextWrapping="Wrap"/>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                </Border>
+
+                <Border Style="{StaticResource SectionBorderStyle}"
+                        Visibility="{Binding ConflictSection.HasItems, Converter={StaticResource BoolToVis}}">
+                    <StackPanel>
+                        <DockPanel Margin="0,0,0,8">
+                            <TextBlock Text="Conflict Winners" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                            <Button DockPanel.Dock="Right"
+                                    Content="{Binding ConflictSection.ToggleLabel}"
+                                    Command="{Binding ConflictSection.ToggleExpandedCommand}"
+                                    Visibility="{Binding ConflictSection.HasOverflow, Converter={StaticResource BoolToVis}}"
+                                    Padding="10,4"/>
+                        </DockPanel>
+                        <ItemsControl ItemsSource="{Binding ConflictSection.VisibleItems}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <TextBlock Margin="0,0,0,4" Text="{Binding}" TextWrapping="Wrap"/>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                </Border>
+
+                <Border Style="{StaticResource SectionBorderStyle}"
+                        Visibility="{Binding HighRiskModsSection.HasItems, Converter={StaticResource BoolToVis}}">
+                    <StackPanel>
+                        <DockPanel Margin="0,0,0,8">
+                            <TextBlock Text="High-Risk Mods" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                            <Button DockPanel.Dock="Right"
+                                    Content="{Binding HighRiskModsSection.ToggleLabel}"
+                                    Command="{Binding HighRiskModsSection.ToggleExpandedCommand}"
+                                    Visibility="{Binding HighRiskModsSection.HasOverflow, Converter={StaticResource BoolToVis}}"
+                                    Padding="10,4"/>
+                        </DockPanel>
+                        <ItemsControl ItemsSource="{Binding HighRiskModsSection.VisibleItems}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <TextBlock Margin="0,0,0,4" Text="{Binding}" TextWrapping="Wrap" Foreground="OrangeRed"/>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+        </ScrollViewer>
+
+        <StackPanel Grid.Row="6" Orientation="Horizontal" HorizontalAlignment="Right">
+            <Button Content="Cancel" Width="90" Margin="0,0,8,0" Click="Cancel_Click"/>
+            <Button Content="Apply Mods" Width="120" Style="{StaticResource AccentButtonStyle}" Click="Apply_Click"/>
+        </StackPanel>
+    </Grid>
+</Window>

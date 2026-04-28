@@ -10,12 +10,14 @@ namespace EDF6ModLoaderWpf.Services;
 /// </summary>
 public sealed class ModService
 {
+    private readonly BackupService _backupService;
     private readonly FileService _fileService;
     private readonly ConflictService _conflictService;
     private readonly LoadOrderService _loadOrderService;
 
-    public ModService(FileService fileService, ConflictService conflictService, LoadOrderService loadOrderService)
+    public ModService(BackupService backupService, FileService fileService, ConflictService conflictService, LoadOrderService loadOrderService)
     {
+        _backupService = backupService;
         _fileService = fileService;
         _conflictService = conflictService;
         _loadOrderService = loadOrderService;
@@ -30,6 +32,8 @@ public sealed class ModService
         // Step 1: Build the winner map
         progress?.Report("Building conflict map...");
         var winnerMap = ConflictService.BuildWinnerMap(mods);
+
+        await _backupService.CreateLastApplyBackupAsync(gameRootDir, registryDir, progress);
 
         // Step 2: Clear previously installed files
         progress?.Report("Cleaning game Mods folder...");

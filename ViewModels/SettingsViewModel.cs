@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.IO;
 using System.Windows;
 using System.Windows.Media;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -71,6 +72,14 @@ public partial class SettingsViewModel : ObservableObject
         SelectedFontFamily = AvailableFonts.Contains(_settings.FontFamily)
             ? _settings.FontFamily
             : "Segoe UI";
+
+        ValidateCurrentProfile();
+    }
+
+    partial void OnSelectedProfileChanged(GameProfile? value)
+    {
+        ErrorMessage = string.Empty;
+        ValidateCurrentProfile();
     }
 
     /// <summary>
@@ -121,6 +130,33 @@ public partial class SettingsViewModel : ObservableObject
         }
     }
 
+    [RelayCommand]
+    private void AutoDetectSelectedGame()
+    {
+        if (SelectedProfile is null)
+            return;
+
+        ErrorMessage = string.Empty;
+        var changed = _settingsService.TryAutoDetectGameProfile(SelectedProfile);
+        var gameValid = SettingsService.ValidateGameDirectory(SelectedProfile.GameRootPath, SelectedProfile.ExecutableName);
+
+        ValidateCurrentProfile();
+
+        if (gameValid)
+        {
+            var libraryStatus = Directory.Exists(SelectedProfile.ModLibraryPath)
+                ? "Mods library folder ready."
+                : "Mods library path suggested and will be created on save.";
+            ValidationMessage = $"✅ Auto-detected {SelectedProfile.DisplayName}. {libraryStatus}";
+            return;
+        }
+
+        if (!changed)
+        {
+            ErrorMessage = $"Could not auto-detect {SelectedProfile.DisplayName} in common Steam library locations.";
+        }
+    }
+
     /// <summary>
     /// Validates and saves the currently selected game configuration.
     /// </summary>
@@ -134,6 +170,22 @@ public partial class SettingsViewModel : ObservableObject
         if (!SettingsService.ValidateGameDirectory(SelectedProfile.GameRootPath, SelectedProfile.ExecutableName))
         {
             ErrorMessage = $"Invalid game directory — {SelectedProfile.ExecutableName} was not found in the specified folder.";
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(SelectedProfile.ModLibraryPath))
+        {
+            ErrorMessage = "Choose a mods library directory.";
+            return;
+        }
+
+        try
+        {
+            Directory.CreateDirectory(SelectedProfile.ModLibraryPath);
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = $"Could not create the mods library directory: {ex.Message}";
             return;
         }
 
@@ -197,17 +249,27 @@ public partial class SettingsViewModel : ObservableObject
 
         bool gameValid = SettingsService.ValidateGameDirectory(
             SelectedProfile.GameRootPath, SelectedProfile.ExecutableName);
-        bool libValid = SettingsService.ValidateModsLibraryDirectory(SelectedProfile.ModLibraryPath);
 
         if (!string.IsNullOrWhiteSpace(SelectedProfile.GameRootPath))
         {
+            var libraryStatus = GetModsLibraryStatusMessage(SelectedProfile.ModLibraryPath);
             ValidationMessage = gameValid
-                ? $"✅ {SelectedProfile.ExecutableName} found — valid game directory"
+                ? $"✅ {SelectedProfile.ExecutableName} found — valid game directory. {libraryStatus}"
                 : $"⚠️ {SelectedProfile.ExecutableName} not found in this folder";
         }
         else
         {
             ValidationMessage = string.Empty;
         }
+    }
+
+    private static string GetModsLibraryStatusMessage(string modLibraryPath)
+    {
+        if (string.IsNullOrWhiteSpace(modLibraryPath))
+            return "Choose a mods library folder.";
+
+        return Directory.Exists(modLibraryPath)
+            ? "Mods library folder ready."
+            : "Mods library will be created on save.";
     }
 }

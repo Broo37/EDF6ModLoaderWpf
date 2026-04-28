@@ -21,6 +21,14 @@ public sealed class SettingsService
     private static readonly string ErrorLogPath =
         Path.Combine(AppDataRoot, "error.log");
 
+    private static readonly Dictionary<string, string[]> KnownInstallFolderNames =
+        new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["EDF41"] = ["EARTH DEFENSE FORCE 4.1 The Shadow of New Despair"],
+            ["EDF5"] = ["EARTH DEFENSE FORCE 5"],
+            ["EDF6"] = ["EARTH DEFENSE FORCE 6"]
+        };
+
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         WriteIndented = true
@@ -70,7 +78,10 @@ public sealed class SettingsService
                     profile.ModLibraryPath = config.ModLibraryPath;
                     profile.IsConfigured = config.IsConfigured;
                     profile.LastOpened = config.LastOpened;
+                    profile.RecentImports = config.RecentImports ?? [];
                 }
+
+                TryAutoDetectGameProfile(profile);
             }
 
             _cachedSettings = settings;
@@ -119,7 +130,8 @@ public sealed class SettingsService
             GameRootPath = profile.GameRootPath,
             ModLibraryPath = profile.ModLibraryPath,
             IsConfigured = profile.IsConfigured,
-            LastOpened = profile.LastOpened ?? DateTime.Now
+            LastOpened = profile.LastOpened ?? DateTime.Now,
+            RecentImports = [.. profile.RecentImports]
         };
 
         await using var stream = File.Create(configPath);
@@ -149,6 +161,54 @@ public sealed class SettingsService
     /// </summary>
     public static string GetGameAppDataFolder(string gameId)
         => Path.Combine(AppDataRoot, gameId);
+
+    /// <summary>
+    /// Returns the default mods library path for a given game.
+    /// </summary>
+    public static string GetDefaultModsLibraryPath(string gameId)
+    {
+        var documentsPath = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
+        return Path.Combine(documentsPath, "EDF Mod Manager", gameId, "Mods Library");
+    }
+
+    /// <summary>
+    /// Tries to detect a game's install path from common Steam libraries.
+    /// Fills a default mods library path only after a valid game root is known.
+    /// </summary>
+    public bool TryAutoDetectGameProfile(GameProfile profile)
+    {
+        ArgumentNullException.ThrowIfNull(profile);
+
+        bool changed = false;
+        bool gameValid = ValidateGameDirectory(profile.GameRootPath, profile.ExecutableName);
+
+        if (!gameValid)
+        {
+            var detectedRoot = DetectGameInstallRoot(profile.GameId, profile.ExecutableName);
+            if (!string.IsNullOrWhiteSpace(detectedRoot) &&
+                !string.Equals(profile.GameRootPath, detectedRoot, StringComparison.OrdinalIgnoreCase))
+            {
+                profile.GameRootPath = detectedRoot;
+                changed = true;
+            }
+
+            gameValid = ValidateGameDirectory(profile.GameRootPath, profile.ExecutableName);
+        }
+
+        if (gameValid && string.IsNullOrWhiteSpace(profile.ModLibraryPath))
+        {
+            profile.ModLibraryPath = GetDefaultModsLibraryPath(profile.GameId);
+            changed = true;
+        }
+
+        if (profile.IsConfigured != gameValid)
+        {
+            profile.IsConfigured = gameValid;
+            changed = true;
+        }
+
+        return changed;
+    }
 
     /// <summary>
     /// Validates that the given directory contains the specified game executable.
@@ -208,6 +268,117 @@ public sealed class SettingsService
         }
     }
 
+    private static string? DetectGameInstallRoot(string gameId, string executableName)
+    {
+        if (!KnownInstallFolderNames.TryGetValue(gameId, out var candidateFolderNames))
+            return null;
+
+        foreach (var libraryRoot in EnumerateSteamLibraryRoots())
+        {
+            foreach (var folderName in candidateFolderNames)
+            {
+                var candidateRoot = Path.Combine(libraryRoot, "steamapps", "common", folderName);
+                if (ValidateGameDirectory(candidateRoot, executableName))
+                    return candidateRoot;
+            }
+        }
+
+        return null;
+    }
+
+    private static IEnumerable<string> EnumerateSteamLibraryRoots()
+    {
+        var libraryRoots = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var knownSteamRoots = GetKnownSteamRoots().ToList();
+
+        foreach (var steamRoot in knownSteamRoots)
+        {
+            if (Directory.Exists(Path.Combine(steamRoot, "steamapps")))
+                libraryRoots.Add(Path.GetFullPath(steamRoot));
+        }
+
+        foreach (var steamRoot in knownSteamRoots)
+        {
+            foreach (var libraryRoot in ParseSteamLibraryFolders(steamRoot))
+            {
+                if (Directory.Exists(Path.Combine(libraryRoot, "steamapps")))
+                    libraryRoots.Add(Path.GetFullPath(libraryRoot));
+            }
+        }
+
+        return libraryRoots;
+    }
+
+    private static IEnumerable<string> GetKnownSteamRoots()
+    {
+        var candidates = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var programFilesX86 = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86);
+        var programFiles = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
+        var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+
+        AddCandidate(programFilesX86, "Steam");
+        AddCandidate(programFiles, "Steam");
+        AddCandidate(localAppData, "Programs", "Steam");
+
+        return candidates;
+
+        void AddCandidate(params string[] segments)
+        {
+            if (segments.Any(string.IsNullOrWhiteSpace))
+                return;
+
+            candidates.Add(Path.Combine(segments));
+        }
+    }
+
+    private static IEnumerable<string> ParseSteamLibraryFolders(string steamRoot)
+    {
+        var libraryFoldersPath = Path.Combine(steamRoot, "steamapps", "libraryfolders.vdf");
+        if (!File.Exists(libraryFoldersPath))
+            yield break;
+
+        foreach (var line in File.ReadLines(libraryFoldersPath))
+        {
+            var values = ExtractQuotedValues(line);
+            if (values.Count < 2)
+                continue;
+
+            if (string.Equals(values[0], "path", StringComparison.OrdinalIgnoreCase))
+            {
+                yield return UnescapeVdfPath(values[1]);
+                continue;
+            }
+
+            if (int.TryParse(values[0], out _) && values[1].Contains(Path.DirectorySeparatorChar))
+                yield return UnescapeVdfPath(values[1]);
+        }
+    }
+
+    private static List<string> ExtractQuotedValues(string line)
+    {
+        var values = new List<string>();
+        int startIndex = 0;
+
+        while (true)
+        {
+            var openQuoteIndex = line.IndexOf('"', startIndex);
+            if (openQuoteIndex < 0)
+                break;
+
+            var closeQuoteIndex = line.IndexOf('"', openQuoteIndex + 1);
+            if (closeQuoteIndex < 0)
+                break;
+
+            values.Add(line.Substring(openQuoteIndex + 1, closeQuoteIndex - openQuoteIndex - 1));
+            startIndex = closeQuoteIndex + 1;
+        }
+
+        return values;
+    }
+
+    private static string UnescapeVdfPath(string value)
+        => value.Replace("\\\\", "\\");
+
     /// <summary>
     /// JSON shape for the per-game game_config.json file.
     /// </summary>
@@ -227,5 +398,8 @@ public sealed class SettingsService
 
         [JsonPropertyName("lastOpened")]
         public DateTime? LastOpened { get; set; }
+
+        [JsonPropertyName("recentImports")]
+        public List<RecentImportEntry> RecentImports { get; set; } = [];
     }
 }

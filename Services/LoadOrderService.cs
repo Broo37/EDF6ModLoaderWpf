@@ -159,25 +159,255 @@ public sealed class LoadOrderService
     /// </summary>
     public async Task SaveToRegistryAsync(IList<ModEntry> mods, string registryDir)
     {
-        var registry = new ActiveModsRegistry
-        {
-            LastUpdated = DateTime.Now,
-            ActiveMods = mods
-                .Where(m => m.IsActive)
-                .OrderBy(m => m.LoadOrder)
-                .Select(m => new ActiveModEntry
-                {
-                    Name = m.ModName,
-                    LoadOrder = m.LoadOrder,
-                    Group = m.Group,
-                    Files = FileService.GetModRelativeFiles(m.FolderPath)
-                })
-                .ToList(),
-            ModGroups = mods
-                .Where(m => !string.IsNullOrEmpty(m.Group))
-                .ToDictionary(m => m.ModName, m => m.Group, StringComparer.OrdinalIgnoreCase)
-        };
+        var registry = await _fileService.LoadRegistryAsync(registryDir);
+        registry.LastUpdated = DateTime.Now;
+        registry.ActiveMods = BuildActiveEntries(mods);
+        registry.ModGroups = BuildGroupMap(mods);
 
         await _fileService.SaveRegistryAsync(registryDir, registry);
+    }
+
+    public async Task<List<string>> GetPresetNamesAsync(string registryDir)
+    {
+        var registry = await _fileService.LoadRegistryAsync(registryDir);
+        return registry.Presets
+            .OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase)
+            .Select(p => p.Name)
+            .ToList();
+    }
+
+    public async Task<string> GetActivePresetNameAsync(string registryDir)
+    {
+        var registry = await _fileService.LoadRegistryAsync(registryDir);
+        return registry.ActivePresetName;
+    }
+
+    public async Task<string> SavePresetAsync(IList<ModEntry> mods, string registryDir, string presetName)
+    {
+        var normalizedName = NormalizePresetName(presetName);
+        var registry = await _fileService.LoadRegistryAsync(registryDir);
+
+        var activeEntries = BuildActiveEntries(mods);
+        var modGroups = BuildGroupMap(mods);
+        var preset = registry.Presets.FirstOrDefault(p =>
+            string.Equals(p.Name, normalizedName, StringComparison.OrdinalIgnoreCase));
+
+        if (preset is null)
+        {
+            preset = new ModPreset { Name = normalizedName };
+            registry.Presets.Add(preset);
+        }
+
+        preset.LastUpdated = DateTime.Now;
+        preset.ActiveMods = CloneActiveEntries(activeEntries);
+        preset.ModGroups = CloneGroupMap(modGroups);
+
+        registry.ActivePresetName = preset.Name;
+        registry.LastUpdated = DateTime.Now;
+        registry.ActiveMods = CloneActiveEntries(activeEntries);
+        registry.ModGroups = CloneGroupMap(modGroups);
+
+        await _fileService.SaveRegistryAsync(registryDir, registry);
+        return preset.Name;
+    }
+
+    public async Task<bool> LoadPresetAsync(IList<ModEntry> mods, string registryDir, string presetName)
+    {
+        var normalizedName = NormalizePresetName(presetName);
+        var registry = await _fileService.LoadRegistryAsync(registryDir);
+        var preset = registry.Presets.FirstOrDefault(p =>
+            string.Equals(p.Name, normalizedName, StringComparison.OrdinalIgnoreCase));
+
+        if (preset is null)
+            return false;
+
+        var presetLookup = preset.ActiveMods.ToDictionary(e => e.Name, StringComparer.OrdinalIgnoreCase);
+
+        foreach (var mod in mods)
+        {
+            if (presetLookup.TryGetValue(mod.ModName, out var presetEntry))
+            {
+                mod.IsActive = true;
+                mod.LoadOrder = presetEntry.LoadOrder;
+                mod.Group = presetEntry.Group;
+            }
+            else
+            {
+                mod.IsActive = false;
+                mod.LoadOrder = 0;
+                mod.Group = preset.ModGroups.TryGetValue(mod.ModName, out var group)
+                    ? group
+                    : string.Empty;
+            }
+        }
+
+        ResequenceLoadOrders(mods);
+
+        registry.ActivePresetName = preset.Name;
+        registry.LastUpdated = DateTime.Now;
+        registry.ActiveMods = CloneActiveEntries(preset.ActiveMods);
+        registry.ModGroups = CloneGroupMap(preset.ModGroups);
+
+        await _fileService.SaveRegistryAsync(registryDir, registry);
+        return true;
+    }
+
+    public async Task<bool> DeletePresetAsync(string registryDir, string presetName)
+    {
+        var normalizedName = NormalizePresetName(presetName);
+        var registry = await _fileService.LoadRegistryAsync(registryDir);
+        var removed = registry.Presets.RemoveAll(p =>
+            string.Equals(p.Name, normalizedName, StringComparison.OrdinalIgnoreCase)) > 0;
+
+        if (!removed)
+            return false;
+
+        if (string.Equals(registry.ActivePresetName, normalizedName, StringComparison.OrdinalIgnoreCase))
+            registry.ActivePresetName = string.Empty;
+
+        registry.LastUpdated = DateTime.Now;
+        await _fileService.SaveRegistryAsync(registryDir, registry);
+        return true;
+    }
+
+    public async Task<string> RenamePresetAsync(string registryDir, string existingName, string newName)
+    {
+        var normalizedExistingName = NormalizePresetName(existingName);
+        var normalizedNewName = NormalizePresetName(newName);
+        var registry = await _fileService.LoadRegistryAsync(registryDir);
+        var preset = registry.Presets.FirstOrDefault(p =>
+            string.Equals(p.Name, normalizedExistingName, StringComparison.OrdinalIgnoreCase));
+
+        if (preset is null)
+            throw new InvalidOperationException("Preset not found.");
+
+        bool nameTaken = registry.Presets.Any(p =>
+            !ReferenceEquals(p, preset) &&
+            string.Equals(p.Name, normalizedNewName, StringComparison.OrdinalIgnoreCase));
+
+        if (nameTaken)
+            throw new InvalidOperationException("A preset with that name already exists.");
+
+        preset.Name = normalizedNewName;
+        preset.LastUpdated = DateTime.Now;
+
+        if (string.Equals(registry.ActivePresetName, normalizedExistingName, StringComparison.OrdinalIgnoreCase))
+            registry.ActivePresetName = normalizedNewName;
+
+        registry.LastUpdated = DateTime.Now;
+        await _fileService.SaveRegistryAsync(registryDir, registry);
+        return normalizedNewName;
+    }
+
+    public async Task<ModPreset?> GetPresetAsync(string registryDir, string presetName)
+    {
+        if (string.IsNullOrWhiteSpace(presetName))
+            return null;
+
+        var normalizedName = NormalizePresetName(presetName);
+        var registry = await _fileService.LoadRegistryAsync(registryDir);
+        var preset = registry.Presets.FirstOrDefault(p =>
+            string.Equals(p.Name, normalizedName, StringComparison.OrdinalIgnoreCase));
+
+        return preset is null ? null : ClonePreset(preset);
+    }
+
+    public static bool DoesPresetMatchState(IList<ModEntry> mods, ModPreset? preset)
+    {
+        if (preset is null)
+            return false;
+
+        var activeMods = mods
+            .Where(m => m.IsActive)
+            .OrderBy(m => m.LoadOrder)
+            .ToList();
+
+        if (activeMods.Count != preset.ActiveMods.Count)
+            return false;
+
+        for (int i = 0; i < activeMods.Count; i++)
+        {
+            var current = activeMods[i];
+            var saved = preset.ActiveMods[i];
+            if (!string.Equals(current.ModName, saved.Name, StringComparison.OrdinalIgnoreCase) ||
+                current.LoadOrder != saved.LoadOrder ||
+                !string.Equals(current.Group, saved.Group, StringComparison.Ordinal))
+            {
+                return false;
+            }
+        }
+
+        var currentGroups = BuildGroupMap(mods);
+        if (currentGroups.Count != preset.ModGroups.Count)
+            return false;
+
+        foreach (var (name, group) in currentGroups)
+        {
+            if (!preset.ModGroups.TryGetValue(name, out var savedGroup) ||
+                !string.Equals(group, savedGroup, StringComparison.Ordinal))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static List<ActiveModEntry> BuildActiveEntries(IList<ModEntry> mods)
+    {
+        return mods
+            .Where(m => m.IsActive)
+            .OrderBy(m => m.LoadOrder)
+            .Select(m => new ActiveModEntry
+            {
+                Name = m.ModName,
+                LoadOrder = m.LoadOrder,
+                Group = m.Group,
+                Files = FileService.GetModRelativeFiles(m.FolderPath)
+            })
+            .ToList();
+    }
+
+    private static Dictionary<string, string> BuildGroupMap(IList<ModEntry> mods)
+    {
+        return mods
+            .Where(m => !string.IsNullOrEmpty(m.Group))
+            .ToDictionary(m => m.ModName, m => m.Group, StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static List<ActiveModEntry> CloneActiveEntries(IEnumerable<ActiveModEntry> entries)
+    {
+        return entries.Select(e => new ActiveModEntry
+        {
+            Name = e.Name,
+            LoadOrder = e.LoadOrder,
+            Group = e.Group,
+            Files = [.. e.Files]
+        }).ToList();
+    }
+
+    private static Dictionary<string, string> CloneGroupMap(Dictionary<string, string> groups)
+    {
+        return new Dictionary<string, string>(groups, StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static ModPreset ClonePreset(ModPreset preset)
+    {
+        return new ModPreset
+        {
+            Name = preset.Name,
+            LastUpdated = preset.LastUpdated,
+            ActiveMods = CloneActiveEntries(preset.ActiveMods),
+            ModGroups = CloneGroupMap(preset.ModGroups)
+        };
+    }
+
+    private static string NormalizePresetName(string presetName)
+    {
+        var normalizedName = presetName.Trim();
+        if (string.IsNullOrWhiteSpace(normalizedName))
+            throw new ArgumentException("Preset name cannot be empty.", nameof(presetName));
+
+        return normalizedName;
     }
 }

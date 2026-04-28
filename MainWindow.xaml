@@ -1,4 +1,5 @@
 ﻿<Window x:Class="EDF6ModLoaderWpf.MainWindow"
+    x:Name="RootWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
@@ -10,7 +11,23 @@
         Height="680" Width="960"
         MinHeight="500" MinWidth="750"
         WindowStartupLocation="CenterScreen"
+        AllowDrop="True"
+        PreviewDragOver="Window_PreviewDragOver"
+        PreviewDragLeave="Window_PreviewDragLeave"
+        PreviewDrop="Window_PreviewDrop"
         ui:WindowHelper.UseModernWindowStyle="True">
+
+    <Window.InputBindings>
+        <KeyBinding Key="F5" Command="{Binding DataContext.RefreshCommand, ElementName=RootWindow}"/>
+        <KeyBinding Key="I" Modifiers="Control+Shift" Command="{Binding DataContext.ImportZipCommand, ElementName=RootWindow}"/>
+        <KeyBinding Key="O" Modifiers="Control+Shift" Command="{Binding DataContext.ImportFolderCommand, ElementName=RootWindow}"/>
+        <KeyBinding Key="L" Modifiers="Control+Shift" Command="{Binding DataContext.LaunchGameCommand, ElementName=RootWindow}"/>
+        <KeyBinding Key="A" Modifiers="Control+Shift" Command="{Binding DataContext.ApplyModsCommand, ElementName=RootWindow}"/>
+        <KeyBinding Key="A" Modifiers="Control+Alt" Command="{Binding DataContext.ApplyAndLaunchCommand, ElementName=RootWindow}"/>
+        <KeyBinding Key="J" Modifiers="Control+Shift" Command="{Binding DataContext.SelectLatestRecentImportCommand, ElementName=RootWindow}"/>
+        <KeyBinding Key="P" Modifiers="Control+Alt" Command="{Binding DataContext.ToggleLatestRecentImportPinCommand, ElementName=RootWindow}"/>
+        <KeyBinding Key="R" Modifiers="Control+Alt" Command="{Binding DataContext.ClearRecentImportsCommand, ElementName=RootWindow}"/>
+    </Window.InputBindings>
 
     <Window.Resources>
         <!-- CheckBox style for DataGrid: override ModernWPF MinWidth so the box
@@ -31,6 +48,64 @@
             <Setter Property="VerticalAlignment" Value="Center"/>
         </Style>
 
+        <DataTemplate x:Key="RecentImportCardTemplate">
+            <Border Margin="0,0,8,8" Padding="8,6" CornerRadius="6"
+                    Background="{DynamicResource SystemControlBackgroundBaseLowBrush}">
+                <StackPanel>
+                    <TextBlock Text="{Binding ModName}" FontWeight="SemiBold"/>
+                    <TextBlock Margin="0,2,0,0" FontSize="11" Foreground="Gray">
+                        <Run Text="{Binding SourceLabel}"/>
+                        <Run Text=" • "/>
+                        <Run Text="{Binding ImportedFileCount}"/>
+                        <Run Text=" files"/>
+                        <Run Text=" • "/>
+                        <Run Text="{Binding ImportedAtLabel}"/>
+                    </TextBlock>
+                    <TextBlock Margin="0,2,0,0"
+                               FontSize="11"
+                               Foreground="OrangeRed"
+                               Visibility="{Binding IsPinned, Converter={StaticResource BoolToVis}}"
+                               Text="📌 Pinned"/>
+                    <TextBlock Margin="0,2,0,0" FontSize="11" Foreground="OrangeRed"
+                               Visibility="{Binding ReplacedExisting, Converter={StaticResource BoolToVis}}"
+                               Text="Replaced existing library folder"/>
+                    <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                        <Button Margin="0,0,6,0"
+                                Command="{Binding DataContext.ToggleRecentImportPinCommand,
+                                    RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                CommandParameter="{Binding}"
+                                ToolTip="Pin or unpin this recent import.">
+                            <Button.Style>
+                                <Style TargetType="Button" BasedOn="{StaticResource InlineSmallButton}">
+                                    <Setter Property="Content" Value="Pin"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsPinned}" Value="True">
+                                            <Setter Property="Content" Value="Unpin"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Button.Style>
+                        </Button>
+                        <Button Content="Select"
+                                Style="{StaticResource InlineSmallButton}"
+                                Margin="0,0,6,0"
+                                Tag="RecentImportPrimaryAction"
+                                PreviewKeyDown="RecentImportCardPrimaryAction_PreviewKeyDown"
+                                Command="{Binding DataContext.SelectRecentImportCommand,
+                                    RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                CommandParameter="{Binding}"
+                                ToolTip="Select this mod in the grid. Use arrow keys to move between recent import cards."/>
+                        <Button Content="Open Folder"
+                                Style="{StaticResource InlineSmallButton}"
+                                Command="{Binding DataContext.OpenRecentImportFolderCommand,
+                                    RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                CommandParameter="{Binding}"
+                                ToolTip="Open this mod's folder."/>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+        </DataTemplate>
+
         <!-- BooleanToVisibilityConverter -->
         <BooleanToVisibilityConverter x:Key="BoolToVis"/>
     </Window.Resources>
@@ -39,6 +114,7 @@
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>   <!-- Header / paths -->
             <RowDefinition Height="Auto"/>   <!-- Toolbar -->
+            <RowDefinition Height="Auto"/>   <!-- Filters -->
             <RowDefinition Height="*"/>      <!-- DataGrid -->
             <RowDefinition Height="Auto"/>   <!-- Conflict report panel -->
             <RowDefinition Height="Auto"/>   <!-- Toast area -->
@@ -66,8 +142,10 @@
                 <!-- App title -->
                 <TextBlock Grid.Row="0" Grid.ColumnSpan="2"
                            Text="{Binding WindowTitle}" FontSize="20" FontWeight="SemiBold"/>
-                <Button Grid.Row="0" Grid.Column="2" Content="⚙ Settings"
-                        Command="{Binding OpenSettingsCommand}" VerticalAlignment="Center"/>
+                <Button Grid.Row="0" Grid.Column="2" Content="⚙ _Settings"
+                    Command="{Binding OpenSettingsCommand}"
+                    ToolTip="Open settings (Alt+S)"
+                    VerticalAlignment="Center"/>
 
                 <!-- ── Game Selector ── -->
                 <StackPanel Grid.Row="2" Grid.ColumnSpan="3">
@@ -169,36 +247,258 @@
         </Border>
 
         <!-- ═══ TOOLBAR ═══ -->
-        <WrapPanel Grid.Row="1" Orientation="Horizontal" Margin="16,8">
-            <Button Content="🔄 Refresh" Command="{Binding RefreshCommand}" Margin="0,0,8,0"/>
-            <Button Content="✅ Enable All" Command="{Binding EnableAllCommand}" Margin="0,0,8,0"/>
-            <Button Content="❌ Disable All" Command="{Binding DisableAllCommand}" Margin="0,0,8,0"/>
+        <Grid Grid.Row="1" Margin="16,8,16,4">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
 
-            <Separator Style="{StaticResource {x:Static ToolBar.SeparatorStyleKey}}" Margin="4,2,12,2"/>
+            <WrapPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                <Button Content="🔄 _Refresh"
+                        Command="{Binding RefreshCommand}"
+                        Margin="0,0,8,0"
+                        ToolTip="Rescan the active mod library (F5)."/>
 
-            <Button Content="🔃 Sort by Name" Command="{Binding SortByNameCommand}" Margin="0,0,8,0"/>
-            <Button Content="📋 Load Order View" Command="{Binding ShowLoadOrderViewCommand}" Margin="0,0,8,0"/>
-            <Button Content="🗂️ All Mods View" Command="{Binding ShowAllModsViewCommand}" Margin="0,0,8,0"/>
-            <Button Content="📂 Group View" Command="{Binding ToggleGroupViewCommand}" Margin="0,0,8,0"/>
+                <Button Content="📥 _Import ▾"
+                        Margin="0,0,8,0"
+                        Click="ToolbarMenuButton_Click"
+                        ToolTip="Import a .zip archive or mod folder. Alt+I opens this menu.">
+                    <Button.ContextMenu>
+                        <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
+                            <MenuItem Header="_Zip Archive..."
+                                      Command="{Binding ImportZipCommand}"
+                                      InputGestureText="Ctrl+Shift+I"/>
+                            <MenuItem Header="_Folder..."
+                                      Command="{Binding ImportFolderCommand}"
+                                      InputGestureText="Ctrl+Shift+O"/>
+                        </ContextMenu>
+                    </Button.ContextMenu>
+                </Button>
 
-            <Separator Style="{StaticResource {x:Static ToolBar.SeparatorStyleKey}}" Margin="4,2,12,2"/>
+                <Button Content="🧰 _Manage ▾"
+                        Margin="0,0,8,0"
+                        Click="ToolbarMenuButton_Click"
+                        ToolTip="Bulk library actions and undo. Alt+M opens this menu.">
+                    <Button.ContextMenu>
+                        <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
+                            <MenuItem Header="_Enable All" Command="{Binding EnableAllCommand}"/>
+                            <MenuItem Header="_Disable All" Command="{Binding DisableAllCommand}"/>
+                            <Separator/>
+                            <MenuItem Header="_Sort by Name" Command="{Binding SortByNameCommand}"/>
+                            <MenuItem Header="_Undo Last Change"
+                                      Command="{Binding UndoCommand}"
+                                      IsEnabled="{Binding CanUndo}"/>
+                            <Separator/>
+                            <MenuItem Header="_Restore Last Apply"
+                                      Command="{Binding RestoreLastApplyBackupCommand}"
+                                      IsEnabled="{Binding CanRestoreLastApply}"/>
+                        </ContextMenu>
+                    </Button.ContextMenu>
+                </Button>
 
-            <Button Content="↩️ Undo" Command="{Binding UndoCommand}"
-                    IsEnabled="{Binding CanUndo}" Margin="0,0,8,0"/>
+                <Button Content="🗂️ _View ▾"
+                        Margin="0,0,8,0"
+                        Click="ToolbarMenuButton_Click"
+                        ToolTip="Switch between list views. Alt+V opens this menu.">
+                    <Button.ContextMenu>
+                        <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
+                            <MenuItem Header="_Load Order View" Command="{Binding ShowLoadOrderViewCommand}"/>
+                            <MenuItem Header="_All Mods View" Command="{Binding ShowAllModsViewCommand}"/>
+                            <MenuItem Header="_Group View" Command="{Binding ToggleGroupViewCommand}"/>
+                        </ContextMenu>
+                    </Button.ContextMenu>
+                </Button>
+            </WrapPanel>
 
-            <Separator Style="{StaticResource {x:Static ToolBar.SeparatorStyleKey}}" Margin="4,2,12,2"/>
+            <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button Content="🎮 _Launch Game"
+                        Command="{Binding LaunchGameCommand}"
+                        IsEnabled="{Binding CanLaunchGame}"
+                        Margin="0,0,8,0"
+                        ToolTip="Launch the active game (Ctrl+Shift+L)."/>
+                <Button Content="🚀 _Apply Mods"
+                        Command="{Binding ApplyModsCommand}"
+                        IsEnabled="{Binding HasPendingChanges}"
+                        Margin="0,0,8,0"
+                        ToolTip="Apply current mods to the game folder (Ctrl+Shift+A)."
+                        FontWeight="SemiBold"/>
+                <Button Content="🕹️ Apply + _Launch"
+                        Command="{Binding ApplyAndLaunchCommand}"
+                        IsEnabled="{Binding CanApplyAndLaunch}"
+                        Margin="0,0,8,0"
+                        ToolTip="Apply mods and launch the game (Ctrl+Alt+A)."
+                        FontWeight="SemiBold"/>
 
-            <Button Content="🚀 Apply Mods" Command="{Binding ApplyModsCommand}"
-                    IsEnabled="{Binding HasPendingChanges}" Margin="0,0,8,0"
-                    FontWeight="SemiBold"/>
+                <ui:ProgressRing IsActive="{Binding IsBusy}" Width="24" Height="24"
+                                 Margin="12,0,0,0" VerticalAlignment="Center"/>
+            </StackPanel>
+        </Grid>
 
-            <!-- Loading indicator -->
-            <ui:ProgressRing IsActive="{Binding IsBusy}" Width="24" Height="24"
-                             Margin="12,0,0,0" VerticalAlignment="Center"/>
-        </WrapPanel>
+        <!-- ═══ FILTERS ═══ -->
+        <Border Grid.Row="2" Margin="16,0,16,8" Padding="10,8"
+                Background="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}"
+                CornerRadius="6">
+            <StackPanel>
+                <Border Margin="0,0,0,10"
+                        Padding="10,8"
+                        CornerRadius="6"
+                        BorderBrush="{DynamicResource SystemControlHighlightAccentBrush}"
+                        BorderThickness="1"
+                        Background="{DynamicResource SystemControlBackgroundBaseLowBrush}"
+                        Visibility="{Binding IsBatchImportActive, Converter={StaticResource BoolToVis}}">
+                    <StackPanel Orientation="Horizontal">
+                        <ui:ProgressRing IsActive="True" Width="20" Height="20" Margin="0,0,10,0"
+                                         VerticalAlignment="Center"/>
+                        <StackPanel>
+                            <TextBlock Text="{Binding BatchImportProgressLabel}" FontWeight="SemiBold"/>
+                            <TextBlock Text="{Binding BatchImportCurrentItemLabel}"
+                                       FontSize="11"
+                                       Foreground="Gray"
+                                       TextWrapping="Wrap"/>
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
+                <StackPanel Margin="0,0,0,10"
+                            Visibility="{Binding HasRecentImports, Converter={StaticResource BoolToVis}}">
+                    <DockPanel Margin="0,0,0,6">
+                        <TextBlock Text="Recent Imports" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                        <Button DockPanel.Dock="Right"
+                                Content="Clear"
+                                Style="{StaticResource InlineSmallButton}"
+                                Command="{Binding ClearRecentImportsCommand}"
+                                IsEnabled="{Binding HasRecentImports}"
+                            ToolTip="Clear recent imports for the active game (Ctrl+Alt+R)."
+                                Padding="8,3"/>
+                    </DockPanel>
+                    <Border Margin="0,0,0,8"
+                            Padding="10,8"
+                            CornerRadius="6"
+                            Background="{DynamicResource SystemControlBackgroundBaseLowBrush}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+
+                            <StackPanel Grid.Column="0">
+                                <TextBlock FontWeight="SemiBold">
+                                    <Run Text="Latest: "/><Run Text="{Binding LatestRecentImport.ModName}"/>
+                                </TextBlock>
+                                <TextBlock Margin="0,2,0,0" FontSize="11" Foreground="Gray">
+                                    <Run Text="{Binding LatestRecentImport.SourceLabel}"/>
+                                    <Run Text=" • "/>
+                                    <Run Text="{Binding LatestRecentImport.ImportedAtLabel}"/>
+                                    <Run Text=" • "/>
+                                    <Run Text="{Binding LatestRecentImport.ImportedFileCount}"/>
+                                    <Run Text=" files"/>
+                                </TextBlock>
+                                <TextBlock Margin="0,2,0,0"
+                                           FontSize="11"
+                                           Foreground="OrangeRed"
+                                           Visibility="{Binding LatestRecentImport.IsPinned, Converter={StaticResource BoolToVis}}"
+                                           Text="📌 Pinned"/>
+                            </StackPanel>
+
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="12,0,0,0" VerticalAlignment="Center">
+                                <Button Margin="0,0,6,0"
+                                        Command="{Binding ToggleRecentImportPinCommand}"
+                                        CommandParameter="{Binding LatestRecentImport}"
+                                        ToolTip="Toggle pin for the latest import (Ctrl+Alt+P).">
+                                    <Button.Style>
+                                        <Style TargetType="Button" BasedOn="{StaticResource InlineSmallButton}">
+                                            <Setter Property="Content" Value="Pin"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding LatestRecentImport.IsPinned}" Value="True">
+                                                    <Setter Property="Content" Value="Unpin"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Button.Style>
+                                </Button>
+                                <Button Content="Jump"
+                                        Margin="0,0,6,0"
+                                        Style="{StaticResource InlineSmallButton}"
+                                    Tag="RecentImportPrimaryAction"
+                                    PreviewKeyDown="RecentImportCardPrimaryAction_PreviewKeyDown"
+                                        Command="{Binding SelectRecentImportCommand}"
+                                    CommandParameter="{Binding LatestRecentImport}"
+                                    ToolTip="Jump to the latest import in the mod list (Ctrl+Shift+J). Use arrow keys to move between recent import actions."/>
+                                <Button Content="Open"
+                                        Style="{StaticResource InlineSmallButton}"
+                                        Command="{Binding OpenRecentImportFolderCommand}"
+                                        CommandParameter="{Binding LatestRecentImport}"/>
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+                    <StackPanel Margin="0,0,0,8"
+                                Visibility="{Binding HasPinnedRecentImports, Converter={StaticResource BoolToVis}}">
+                        <TextBlock Text="{Binding PinnedRecentImportsHeader}" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                        <ItemsControl ItemsSource="{Binding PinnedRecentImports}"
+                                      ItemTemplate="{StaticResource RecentImportCardTemplate}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <WrapPanel/>
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                        </ItemsControl>
+                    </StackPanel>
+                    <StackPanel Visibility="{Binding HasUnpinnedRecentImports, Converter={StaticResource BoolToVis}}">
+                        <TextBlock Text="{Binding RecentImportsHeader}" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                        <ItemsControl ItemsSource="{Binding RecentImports}"
+                                      ItemTemplate="{StaticResource RecentImportCardTemplate}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <WrapPanel/>
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                        </ItemsControl>
+                    </StackPanel>
+                </StackPanel>
+
+                <WrapPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,0,8">
+                    <TextBlock Text="Loadout" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                    <ComboBox Width="180" Margin="0,0,12,0"
+                              ItemsSource="{Binding AvailablePresets}"
+                              SelectedItem="{Binding SelectedPresetName, Mode=TwoWay}"/>
+                    <TextBox Width="180" Margin="0,0,12,0"
+                             Text="{Binding PresetNameInput, UpdateSourceTrigger=PropertyChanged}"
+                             VerticalAlignment="Center"/>
+                    <Button Content="Save" Command="{Binding SavePresetCommand}"
+                            IsEnabled="{Binding CanSavePreset}" Margin="0,0,8,0"/>
+                    <Button Content="Load" Command="{Binding LoadPresetCommand}"
+                            IsEnabled="{Binding CanLoadPreset}" Margin="0,0,8,0"/>
+                        <Button Content="Rename" Command="{Binding RenamePresetCommand}"
+                            IsEnabled="{Binding CanRenamePreset}" Margin="0,0,8,0"/>
+                    <Button Content="Delete" Command="{Binding DeletePresetCommand}"
+                                IsEnabled="{Binding CanDeletePreset}" Margin="0,0,12,0"/>
+                            <TextBlock FontSize="11" VerticalAlignment="Center" Foreground="Gray">
+                            <Run Text="Active: "/><Run Text="{Binding ActivePresetDisplayName, Mode=OneWay}"/>
+                            </TextBlock>
+                            <TextBlock Margin="8,0,0,0" FontSize="11" VerticalAlignment="Center"
+                                   Foreground="OrangeRed"
+                                   Visibility="{Binding IsActivePresetDirty, Converter={StaticResource BoolToVis}}"
+                                   Text="modified"/>
+                </WrapPanel>
+
+                <WrapPanel Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBlock Text="Filter" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                    <TextBox Width="220" Margin="0,0,12,0"
+                             Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
+                             VerticalAlignment="Center"/>
+                    <CheckBox Content="Active Only" Margin="0,0,12,0"
+                              IsChecked="{Binding ShowActiveOnly, Mode=TwoWay}"/>
+                    <CheckBox Content="Conflicts Only" Margin="0,0,12,0"
+                              IsChecked="{Binding ShowConflictsOnly, Mode=TwoWay}"/>
+                    <CheckBox Content="Risky Only" Margin="0,0,12,0"
+                              IsChecked="{Binding ShowRiskyOnly, Mode=TwoWay}"/>
+                    <Button Content="Clear" Command="{Binding ClearFiltersCommand}"/>
+                </WrapPanel>
+            </StackPanel>
+        </Border>
 
         <!-- ═══ MOD LIST ═══ -->
-        <DataGrid x:Name="ModsDataGrid" Grid.Row="2" ItemsSource="{Binding Mods}"
+        <DataGrid x:Name="ModsDataGrid" Grid.Row="3" ItemsSource="{Binding Mods}"
                   SelectedItem="{Binding SelectedMod, Mode=TwoWay}"
                   AutoGenerateColumns="False"
                   CanUserAddRows="False"
@@ -302,6 +602,42 @@
                 <DataGridTextColumn Header="📁 Subfolders" Binding="{Binding Subfolders}"
                                     Width="Auto" MinWidth="100" IsReadOnly="True"/>
 
+                <!-- Warning indicator -->
+                <DataGridTemplateColumn Header="⚠️" Width="45" IsReadOnly="True">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <TextBlock HorizontalAlignment="Center" VerticalAlignment="Center"
+                                       Cursor="Hand">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Text" Value=""/>
+                                        <Setter Property="Foreground" Value="Gray"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding HasWarnings}" Value="True">
+                                                <Setter Property="Text" Value="⚠️"/>
+                                                <Setter Property="Foreground" Value="Orange"/>
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding CompatibilityStatus}" Value="Mismatch">
+                                                <Setter Property="Text" Value="⛔"/>
+                                                <Setter Property="Foreground" Value="OrangeRed"/>
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding IsHighRisk}" Value="True">
+                                                <Setter Property="Text" Value="🔥"/>
+                                                <Setter Property="Foreground" Value="OrangeRed"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                                <TextBlock.ToolTip>
+                                    <ToolTip MaxWidth="320">
+                                        <TextBlock Text="{Binding WarningDetails}" TextWrapping="Wrap"/>
+                                    </ToolTip>
+                                </TextBlock.ToolTip>
+                            </TextBlock>
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+
                 <!-- Status with colour -->
                 <DataGridTemplateColumn Header="🔄 Status" Width="Auto" MinWidth="90">
                     <DataGridTemplateColumn.CellTemplate>
@@ -363,6 +699,15 @@
                                         <StackPanel>
                                             <TextBlock Text="{Binding ModName}" FontWeight="Bold" Margin="0,0,0,4"/>
                                             <TextBlock Text="{Binding Description}" TextWrapping="Wrap"/>
+                                            <TextBlock Margin="0,6,0,0" FontSize="11" FontWeight="SemiBold">
+                                                <Run Text="Compatibility: "/><Run Text="{Binding CompatibilityStatus, Mode=OneWay}"/>
+                                            </TextBlock>
+                                            <TextBlock FontSize="11">
+                                                <Run Text="Risk: "/><Run Text="{Binding RiskLevel, Mode=OneWay}"/>
+                                            </TextBlock>
+                                            <TextBlock Margin="0,4,0,0" FontSize="11" TextWrapping="Wrap">
+                                                <Run Text="Warnings: "/><Run Text="{Binding WarningDetails, Mode=OneWay}"/>
+                                            </TextBlock>
                                             <TextBlock Margin="0,4,0,0" FontSize="11" Foreground="Gray">
                                                 <Run Text="Subfolders: "/><Run Text="{Binding Subfolders, Mode=OneWay}"/>
                                             </TextBlock>
@@ -380,7 +725,7 @@
         </DataGrid>
 
         <!-- ═══ CONFLICT REPORT PANEL ═══ -->
-        <Border Grid.Row="3" Margin="16,8,16,0" Padding="12" CornerRadius="6"
+        <Border Grid.Row="4" Margin="16,8,16,0" Padding="12" CornerRadius="6"
                 Background="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}"
                 BorderBrush="Orange" BorderThickness="1"
                 Visibility="{Binding IsConflictPanelVisible, Converter={StaticResource BoolToVis}}">
@@ -402,7 +747,7 @@
 
                 <!-- Conflict list -->
                 <ItemsControl Grid.Row="1" ItemsSource="{Binding ConflictReport}"
-                              Margin="0,6,0,0" MaxHeight="120">
+                              Margin="0,6,0,0" MaxHeight="180">
                     <ItemsControl.ItemsPanel>
                         <ItemsPanelTemplate>
                             <VirtualizingStackPanel/>
@@ -410,43 +755,117 @@
                     </ItemsControl.ItemsPanel>
                     <ItemsControl.Template>
                         <ControlTemplate TargetType="ItemsControl">
-                            <ScrollViewer VerticalScrollBarVisibility="Auto" MaxHeight="120">
+                            <ScrollViewer VerticalScrollBarVisibility="Auto" MaxHeight="180">
                                 <ItemsPresenter/>
                             </ScrollViewer>
                         </ControlTemplate>
                     </ItemsControl.Template>
                     <ItemsControl.ItemTemplate>
                         <DataTemplate>
-                            <TextBlock Margin="0,1" FontSize="12" TextWrapping="Wrap">
-                                <Run Text="⚠️ " Foreground="Orange"/>
-                                <Run Text="{Binding FileName, Mode=OneWay}" FontWeight="SemiBold"/>
-                                <Run Text="  →  &quot;"/>
-                                <Run Text="{Binding WinnerModName, Mode=OneWay}" Foreground="Green" FontWeight="SemiBold"/>
-                                <Run Text="&quot; (#"/>
-                                <Run Text="{Binding WinnerLoadOrder, Mode=OneWay}"/>
-                                <Run Text=") wins, overrides &quot;"/>
-                                <Run Text="{Binding LoserModName, Mode=OneWay}" Foreground="OrangeRed"/>
-                                <Run Text="&quot; (#"/>
-                                <Run Text="{Binding LoserLoadOrder, Mode=OneWay}"/>
-                                <Run Text=")"/>
-                            </TextBlock>
+                            <Border Margin="0,0,0,6" Padding="8" CornerRadius="4"
+                                    Background="{DynamicResource SystemControlBackgroundBaseLowBrush}">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+
+                                    <StackPanel Grid.Column="0">
+                                        <TextBlock FontSize="12" FontWeight="SemiBold" TextWrapping="Wrap">
+                                            <Run Text="⚠️ " Foreground="Orange"/>
+                                            <Run Text="{Binding RelativePath, Mode=OneWay}"/>
+                                        </TextBlock>
+                                        <TextBlock Margin="0,2,0,0" FontSize="11" TextWrapping="Wrap">
+                                            <Run Text="Winner: "/>
+                                            <Run Text="{Binding WinnerModName, Mode=OneWay}" Foreground="Green" FontWeight="SemiBold"/>
+                                            <Run Text=" (#"/>
+                                            <Run Text="{Binding WinnerLoadOrder, Mode=OneWay}"/>
+                                            <Run Text=")"/>
+                                        </TextBlock>
+                                        <TextBlock FontSize="11" TextWrapping="Wrap">
+                                            <Run Text="Loser: "/>
+                                            <Run Text="{Binding LoserModName, Mode=OneWay}" Foreground="OrangeRed" FontWeight="SemiBold"/>
+                                            <Run Text=" (#"/>
+                                            <Run Text="{Binding LoserLoadOrder, Mode=OneWay}"/>
+                                            <Run Text=")"/>
+                                        </TextBlock>
+                                    </StackPanel>
+
+                                        <StackPanel Grid.Column="1" Margin="12,0,0,0" VerticalAlignment="Center">
+                                        <Button Margin="0,0,0,4" Padding="8,3"
+                                            Content="Select Winner"
+                                            Style="{StaticResource InlineSmallButton}"
+                                            Command="{Binding DataContext.SelectConflictWinnerCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                            CommandParameter="{Binding}"/>
+                                        <Button Margin="0,0,0,4" Padding="8,3"
+                                            Content="Select Loser"
+                                            Style="{StaticResource InlineSmallButton}"
+                                            Command="{Binding DataContext.SelectConflictLoserCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                            CommandParameter="{Binding}"/>
+                                        <Button Padding="8,3"
+                                            Content="Make Loser Win"
+                                            Style="{StaticResource InlineSmallButton}"
+                                            Command="{Binding DataContext.MakeLoserWinCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                            CommandParameter="{Binding}"/>
+                                        <Button Margin="0,4,0,0" Padding="8,3"
+                                            Content="Move Winner Down"
+                                            Style="{StaticResource InlineSmallButton}"
+                                            Command="{Binding DataContext.MoveWinnerDownCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                            CommandParameter="{Binding}"/>
+                                        </StackPanel>
+                                </Grid>
+                            </Border>
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
 
                 <!-- Tip -->
                 <TextBlock Grid.Row="2" Margin="0,6,0,0" FontSize="11" Foreground="Gray"
-                           Text="💡 Tip: Drag mods in the list or use ⬆⬇ buttons to change priority!"/>
+                           Text="💡 Tip: Use Make Loser Win to raise the losing mod above the current winner, then apply mods when you're ready."/>
             </Grid>
         </Border>
 
         <!-- ═══ TOAST NOTIFICATION AREA ═══ -->
-        <StackPanel x:Name="ToastPanel" Grid.Row="4" Margin="16,4,16,0"/>
+        <StackPanel x:Name="ToastPanel" Grid.Row="5" Margin="16,4,16,0"/>
 
         <!-- ═══ STATUS BAR ═══ -->
-        <Border Grid.Row="5" Padding="16,8"
+        <Border Grid.Row="6" Padding="16,8"
                 Background="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}">
             <TextBlock Text="{Binding StatusText}" FontSize="12"/>
         </Border>
+
+        <Grid x:Name="DropOverlay"
+              Grid.RowSpan="7"
+              Panel.ZIndex="100"
+              Visibility="Collapsed"
+              IsHitTestVisible="False">
+            <Border Margin="24"
+                    CornerRadius="16"
+                    BorderThickness="3"
+                    BorderBrush="{DynamicResource SystemControlHighlightAccentBrush}"
+                    Background="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}"
+                    Opacity="0.96">
+                <StackPanel HorizontalAlignment="Center"
+                            VerticalAlignment="Center"
+                            MaxWidth="440">
+                    <TextBlock Text="📥"
+                               FontSize="40"
+                               HorizontalAlignment="Center"
+                               Margin="0,0,0,10"/>
+                    <TextBlock x:Name="DropOverlayTitle"
+                               Text="Release to import"
+                               FontSize="24"
+                               FontWeight="SemiBold"
+                               TextAlignment="Center"/>
+                    <TextBlock x:Name="DropOverlayText"
+                               Margin="0,10,0,0"
+                               FontSize="13"
+                               Foreground="Gray"
+                               TextAlignment="Center"
+                               TextWrapping="Wrap"
+                               Text="Drop a .zip archive or mod folder into the active game's library."/>
+                </StackPanel>
+            </Border>
+        </Grid>
     </Grid>
 </Window>

@@ -53,6 +53,10 @@ public partial class GameProfile : ObservableObject
     [property: JsonPropertyName("lastOpened")]
     private DateTime? _lastOpened;
 
+    [ObservableProperty]
+    [property: JsonIgnore]
+    private List<RecentImportEntry> _recentImports = [];
+
     /// <summary>
     /// True when this profile is the currently active game in the UI.
     /// Runtime-only, not persisted.

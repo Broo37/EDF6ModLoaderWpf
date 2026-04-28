@@ -9,6 +9,14 @@ namespace EDF6ModLoaderWpf.Models;
 /// </summary>
 public partial class ModEntry : ObservableObject
 {
+    public const string CompatibilityCompatible = "Compatible";
+    public const string CompatibilityUnknown = "Unknown";
+    public const string CompatibilityMismatch = "Mismatch";
+
+    public const string RiskNone = "None";
+    public const string RiskMedium = "Medium";
+    public const string RiskHigh = "High";
+
     /// <summary>
     /// Whether this mod is currently enabled (files copied into the game's Mods folder).
     /// </summary>
@@ -63,6 +71,42 @@ public partial class ModEntry : ObservableObject
     /// </summary>
     [ObservableProperty]
     private bool _hasConflict;
+
+    /// <summary>
+    /// Compatibility classification relative to the active game.
+    /// </summary>
+    [ObservableProperty]
+    private string _compatibilityStatus = CompatibilityUnknown;
+
+    /// <summary>
+    /// Risk classification based on the files this mod touches.
+    /// </summary>
+    [ObservableProperty]
+    private string _riskLevel = RiskNone;
+
+    /// <summary>
+    /// Short warning label shown in the main grid.
+    /// </summary>
+    [ObservableProperty]
+    private string _warningSummary = string.Empty;
+
+    /// <summary>
+    /// Detailed warning text shown in tooltips and future filters.
+    /// </summary>
+    [ObservableProperty]
+    private string _warningDetails = string.Empty;
+
+    /// <summary>
+    /// True when the mod has any compatibility or layout warnings.
+    /// </summary>
+    [ObservableProperty]
+    private bool _hasWarnings;
+
+    /// <summary>
+    /// True when the mod touches higher-risk EDF folders.
+    /// </summary>
+    [ObservableProperty]
+    private bool _isHighRisk;
 
     /// <summary>
     /// List of mod names this mod conflicts with.

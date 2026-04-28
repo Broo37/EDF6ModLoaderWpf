@@ -1,4 +1,6 @@
-﻿using System.ComponentModel;
+﻿using System.Collections.Specialized;
+using System.ComponentModel;
+using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
@@ -18,6 +20,8 @@ namespace EDF6ModLoaderWpf
     /// </summary>
     public partial class MainWindow : Window
     {
+        private const string RecentImportPrimaryActionTag = "RecentImportPrimaryAction";
+
         private MainViewModel _viewModel = null!;
 
         // Drag-and-drop state
@@ -43,10 +47,22 @@ namespace EDF6ModLoaderWpf
                 var win = new SettingsWindow(App.GetService<SettingsService>()) { Owner = this };
                 return win.ShowDialog() == true;
             };
+            _viewModel.ShowImportPreviewDialog = preview =>
+            {
+                var win = new ImportPreviewWindow(preview) { Owner = this };
+                return win.ShowDialog() == true ? win.SelectedImportMode : null;
+            };
+            _viewModel.ShowApplySummaryDialog = preview =>
+            {
+                var win = new ApplySummaryWindow(preview) { Owner = this };
+                return win.ShowDialog() == true;
+            };
             _viewModel.PropertyChanged += OnViewModelPropertyChanged;
+            _viewModel.Mods.CollectionChanged += Mods_CollectionChanged;
             DataContext = _viewModel;
 
             await _viewModel.InitializeAsync();
+            ApplyViewState();
             AutoFitColumns();
 
             // Show first-time welcome screen if no game has been configured yet
@@ -66,14 +82,116 @@ namespace EDF6ModLoaderWpf
 
         private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs args)
         {
-            if (args.PropertyName == nameof(MainViewModel.IsGroupViewActive))
-                ApplyGrouping();
+            if (args.PropertyName == nameof(MainViewModel.IsGroupViewActive) ||
+                args.PropertyName == nameof(MainViewModel.SearchText) ||
+                args.PropertyName == nameof(MainViewModel.ShowActiveOnly) ||
+                args.PropertyName == nameof(MainViewModel.ShowConflictsOnly) ||
+                args.PropertyName == nameof(MainViewModel.ShowRiskyOnly) ||
+                (args.PropertyName == nameof(MainViewModel.IsRefreshing) && _viewModel?.IsRefreshing == false))
+            {
+                ApplyViewState();
+            }
+        }
+
+        private void Mods_CollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
+        {
+            if (e.OldItems is not null)
+            {
+                foreach (ModEntry mod in e.OldItems)
+                    mod.PropertyChanged -= ModEntry_PropertyChanged;
+            }
+
+            if (e.NewItems is not null)
+            {
+                foreach (ModEntry mod in e.NewItems)
+                    mod.PropertyChanged += ModEntry_PropertyChanged;
+            }
+
+            ApplyViewState();
+        }
+
+        private void ModEntry_PropertyChanged(object? sender, PropertyChangedEventArgs args)
+        {
+            if (_viewModel?.IsRefreshing == true)
+                return;
+
+            if (args.PropertyName == nameof(ModEntry.IsActive) ||
+                args.PropertyName == nameof(ModEntry.HasConflict) ||
+                args.PropertyName == nameof(ModEntry.IsHighRisk) ||
+                args.PropertyName == nameof(ModEntry.Group) ||
+                args.PropertyName == nameof(ModEntry.WarningSummary) ||
+                args.PropertyName == nameof(ModEntry.WarningDetails))
+            {
+                ApplyViewState();
+            }
+        }
+
+        private void ToolbarMenuButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is not Button { ContextMenu: { } menu } button)
+                return;
+
+            menu.PlacementTarget = button;
+            menu.Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom;
+            menu.IsOpen = true;
+        }
+
+        private void Window_PreviewDragOver(object sender, DragEventArgs e)
+        {
+            if (e.Data.GetDataPresent(typeof(ModEntry)))
+            {
+                HideDropOverlay();
+                return;
+            }
+
+            var supportedPaths = GetDroppedImportPaths(e.Data);
+            if (supportedPaths.Count == 0)
+            {
+                HideDropOverlay();
+
+                if (e.Data.GetDataPresent(DataFormats.FileDrop))
+                {
+                    e.Effects = DragDropEffects.None;
+                    e.Handled = true;
+                }
+
+                return;
+            }
+
+            ShowDropOverlay(supportedPaths);
+            e.Effects = DragDropEffects.Copy;
+            e.Handled = true;
+        }
+
+        private void Window_PreviewDragLeave(object sender, DragEventArgs e)
+        {
+            HideDropOverlay();
+        }
+
+        private async void Window_PreviewDrop(object sender, DragEventArgs e)
+        {
+            HideDropOverlay();
+
+            if (_viewModel is null || e.Data.GetDataPresent(typeof(ModEntry)))
+                return;
+
+            var supportedPaths = GetDroppedImportPaths(e.Data);
+            if (supportedPaths.Count == 0)
+                return;
+
+            e.Handled = true;
+            await _viewModel.ImportDroppedPathsAsync(supportedPaths);
         }
 
         protected override void OnClosed(EventArgs e)
         {
             if (_viewModel is not null)
+            {
+                _viewModel.Mods.CollectionChanged -= Mods_CollectionChanged;
                 _viewModel.PropertyChanged -= OnViewModelPropertyChanged;
+                foreach (var mod in _viewModel.Mods)
+                    mod.PropertyChanged -= ModEntry_PropertyChanged;
+            }
             base.OnClosed(e);
         }
 
@@ -88,6 +206,42 @@ namespace EDF6ModLoaderWpf
             {
                 _viewModel.ToggleModCommand.Execute(mod);
             }
+        }
+
+        private void RecentImportCardPrimaryAction_PreviewKeyDown(object sender, KeyEventArgs e)
+        {
+            if (sender is not Button currentButton)
+                return;
+
+            var requestedDirection = e.Key switch
+            {
+                Key.Left or Key.Up => -1,
+                Key.Right or Key.Down => 1,
+                Key.Home => int.MinValue,
+                Key.End => int.MaxValue,
+                _ => 0
+            };
+
+            if (requestedDirection == 0)
+                return;
+
+            var actionButtons = GetRecentImportPrimaryActionButtons();
+            var currentIndex = actionButtons.IndexOf(currentButton);
+            if (currentIndex < 0)
+                return;
+
+            int targetIndex = requestedDirection switch
+            {
+                int.MinValue => 0,
+                int.MaxValue => actionButtons.Count - 1,
+                _ => Math.Clamp(currentIndex + requestedDirection, 0, actionButtons.Count - 1)
+            };
+
+            if (targetIndex == currentIndex)
+                return;
+
+            if (actionButtons[targetIndex].Focus())
+                e.Handled = true;
         }
 
         // ── Drag-and-Drop Reorder ────────────────────────────────────
@@ -196,7 +350,7 @@ namespace EDF6ModLoaderWpf
                     try
                     {
                         await _viewModel.SetGroupAsync(mod, newGroup);
-                        ApplyGrouping();
+                        ApplyViewState();
                     }
                     catch (Exception ex)
                     {
@@ -209,18 +363,56 @@ namespace EDF6ModLoaderWpf
 
         // ── Grouping ────────────────────────────────────────────────
 
-        private void ApplyGrouping()
+        private void ApplyViewState()
         {
             if (_viewModel is null) return;
 
             var view = CollectionViewSource.GetDefaultView(ModsDataGrid.ItemsSource);
             if (view is null) return;
 
-            view.GroupDescriptions.Clear();
-            if (_viewModel.IsGroupViewActive)
+            using (view.DeferRefresh())
             {
-                view.GroupDescriptions.Add(new PropertyGroupDescription(nameof(ModEntry.Group)));
+                view.Filter = HasActiveFilters() ? FilterModEntry : null;
+                view.GroupDescriptions.Clear();
+                if (_viewModel.IsGroupViewActive)
+                {
+                    view.GroupDescriptions.Add(new PropertyGroupDescription(nameof(ModEntry.Group)));
+                }
             }
+        }
+
+        private bool HasActiveFilters()
+        {
+            return _viewModel is not null &&
+                   (!string.IsNullOrWhiteSpace(_viewModel.SearchText) ||
+                    _viewModel.ShowActiveOnly ||
+                    _viewModel.ShowConflictsOnly ||
+                    _viewModel.ShowRiskyOnly);
+        }
+
+        private bool FilterModEntry(object item)
+        {
+            if (_viewModel is null || item is not ModEntry mod)
+                return false;
+
+            if (_viewModel.ShowActiveOnly && !mod.IsActive)
+                return false;
+
+            if (_viewModel.ShowConflictsOnly && !mod.HasConflict)
+                return false;
+
+            if (_viewModel.ShowRiskyOnly && !mod.IsHighRisk)
+                return false;
+
+            if (string.IsNullOrWhiteSpace(_viewModel.SearchText))
+                return true;
+
+            return ContainsIgnoreCase(mod.ModName, _viewModel.SearchText) ||
+                   ContainsIgnoreCase(mod.Description, _viewModel.SearchText) ||
+                   ContainsIgnoreCase(mod.Group, _viewModel.SearchText) ||
+                   ContainsIgnoreCase(mod.Subfolders, _viewModel.SearchText) ||
+                   ContainsIgnoreCase(mod.WarningSummary, _viewModel.SearchText) ||
+                   ContainsIgnoreCase(mod.WarningDetails, _viewModel.SearchText);
         }
 
         // ── Column Auto-Fit ─────────────────────────────────────────
@@ -285,6 +477,79 @@ namespace EDF6ModLoaderWpf
                 current = VisualTreeHelper.GetParent(current);
             }
             return null;
+        }
+
+        private static bool ContainsIgnoreCase(string value, string searchText)
+        {
+            return value.Contains(searchText, StringComparison.OrdinalIgnoreCase);
+        }
+
+        private List<Button> GetRecentImportPrimaryActionButtons()
+        {
+            var buttons = new List<Button>();
+            CollectRecentImportPrimaryActionButtons(this, buttons);
+            return buttons;
+        }
+
+        private static void CollectRecentImportPrimaryActionButtons(DependencyObject parent, List<Button> buttons)
+        {
+            int childCount = VisualTreeHelper.GetChildrenCount(parent);
+            for (int index = 0; index < childCount; index++)
+            {
+                var child = VisualTreeHelper.GetChild(parent, index);
+                if (child is Button button &&
+                    button.IsVisible &&
+                    button.IsEnabled &&
+                    button.Tag is string tag &&
+                    string.Equals(tag, RecentImportPrimaryActionTag, StringComparison.Ordinal))
+                {
+                    buttons.Add(button);
+                }
+
+                CollectRecentImportPrimaryActionButtons(child, buttons);
+            }
+        }
+
+        private void ShowDropOverlay(IReadOnlyList<string> supportedPaths)
+        {
+            DropOverlayTitle.Text = supportedPaths.Count == 1
+                ? "Release to import this mod"
+                : $"Release to import {supportedPaths.Count} items";
+
+            DropOverlayText.Text = supportedPaths.Count == 1
+                ? $"{GetDroppedItemDisplayName(supportedPaths[0])} will be previewed before import."
+                : "Each dropped .zip archive or mod folder will be previewed before import.";
+
+            DropOverlay.Visibility = Visibility.Visible;
+        }
+
+        private void HideDropOverlay()
+        {
+            DropOverlay.Visibility = Visibility.Collapsed;
+        }
+
+        private static IReadOnlyList<string> GetDroppedImportPaths(IDataObject data)
+        {
+            if (!data.GetDataPresent(DataFormats.FileDrop) || data.GetData(DataFormats.FileDrop) is not string[] droppedPaths)
+                return [];
+
+            var supportedPaths = new List<string>();
+            foreach (var path in droppedPaths)
+            {
+                if (Directory.Exists(path) ||
+                    (File.Exists(path) && string.Equals(Path.GetExtension(path), ".zip", StringComparison.OrdinalIgnoreCase)))
+                {
+                    supportedPaths.Add(path);
+                }
+            }
+
+            return supportedPaths;
+        }
+
+        private static string GetDroppedItemDisplayName(string path)
+        {
+            var trimmedPath = Path.TrimEndingDirectorySeparator(path);
+            return Path.GetFileName(trimmedPath);
         }
     }
 }

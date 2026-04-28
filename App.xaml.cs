@@ -63,6 +63,7 @@ namespace EDF6ModLoaderWpf
             // Services (singleton — stateless utilities)
             services.AddSingleton<SettingsService>();
             services.AddSingleton<FileService>();
+            services.AddSingleton<BackupService>();
             services.AddSingleton<ConflictService>();
             services.AddSingleton<LoadOrderService>();
             services.AddSingleton<ModService>();

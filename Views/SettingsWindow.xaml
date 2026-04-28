@@ -94,6 +94,18 @@
                                         RelativeSource={RelativeSource AncestorType=Window}}"/>
                         </Grid>
 
+                        <StackPanel Margin="0,12,0,0">
+                            <Button Content="✨ Auto Detect Common Install"
+                                    HorizontalAlignment="Left"
+                                    Command="{Binding DataContext.AutoDetectSelectedGameCommand,
+                                        RelativeSource={RelativeSource AncestorType=Window}}"/>
+                            <TextBlock Margin="0,6,0,0"
+                                       FontSize="12"
+                                       Foreground="Gray"
+                                       TextWrapping="Wrap"
+                                       Text="Searches common Steam library folders and suggests a mods library path when one is missing."/>
+                        </StackPanel>
+
                         <!-- Configuration status indicator -->
                         <TextBlock Margin="0,12,0,0" FontSize="12">
                             <TextBlock.Style>
