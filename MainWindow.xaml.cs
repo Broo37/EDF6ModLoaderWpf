@@ -83,6 +83,7 @@ namespace EDF6ModLoaderWpf
         private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs args)
         {
             if (args.PropertyName == nameof(MainViewModel.IsGroupViewActive) ||
+                args.PropertyName == nameof(MainViewModel.LoadOrderViewActive) ||
                 args.PropertyName == nameof(MainViewModel.SearchText) ||
                 args.PropertyName == nameof(MainViewModel.ShowActiveOnly) ||
                 args.PropertyName == nameof(MainViewModel.ShowConflictsOnly) ||
@@ -119,6 +120,7 @@ namespace EDF6ModLoaderWpf
                 args.PropertyName == nameof(ModEntry.HasConflict) ||
                 args.PropertyName == nameof(ModEntry.IsHighRisk) ||
                 args.PropertyName == nameof(ModEntry.Group) ||
+                args.PropertyName == nameof(ModEntry.LoadOrder) ||
                 args.PropertyName == nameof(ModEntry.WarningSummary) ||
                 args.PropertyName == nameof(ModEntry.WarningDetails))
             {
@@ -374,6 +376,11 @@ namespace EDF6ModLoaderWpf
             {
                 view.Filter = HasActiveFilters() ? FilterModEntry : null;
                 view.GroupDescriptions.Clear();
+                view.SortDescriptions.Clear();
+
+                if (_viewModel.LoadOrderViewActive)
+                    view.SortDescriptions.Add(new SortDescription(nameof(ModEntry.LoadOrder), ListSortDirection.Ascending));
+
                 if (_viewModel.IsGroupViewActive)
                 {
                     view.GroupDescriptions.Add(new PropertyGroupDescription(nameof(ModEntry.Group)));
@@ -385,6 +392,7 @@ namespace EDF6ModLoaderWpf
         {
             return _viewModel is not null &&
                    (!string.IsNullOrWhiteSpace(_viewModel.SearchText) ||
+                    _viewModel.LoadOrderViewActive ||
                     _viewModel.ShowActiveOnly ||
                     _viewModel.ShowConflictsOnly ||
                     _viewModel.ShowRiskyOnly);
@@ -396,6 +404,9 @@ namespace EDF6ModLoaderWpf
                 return false;
 
             if (_viewModel.ShowActiveOnly && !mod.IsActive)
+                return false;
+
+            if (_viewModel.LoadOrderViewActive && !mod.IsActive)
                 return false;
 
             if (_viewModel.ShowConflictsOnly && !mod.HasConflict)

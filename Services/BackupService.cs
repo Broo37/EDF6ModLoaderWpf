@@ -36,43 +36,85 @@ public sealed class BackupService
     public async Task CreateLastApplyBackupAsync(string gameRootDir, string registryDir, IProgress<string>? progress = null)
     {
         var registry = await _fileService.LoadRegistryAsync(registryDir);
+        var backupsRoot = GetBackupsRoot(registryDir);
         var backupRoot = GetBackupRoot(registryDir);
-        var backupFilesRoot = GetBackupFilesRoot(registryDir);
+        var tempBackupRoot = Path.Combine(backupsRoot, $"{LastApplyFolderName}.tmp-{Guid.NewGuid():N}");
+        var oldBackupRoot = Path.Combine(backupsRoot, $"{LastApplyFolderName}.old-{Guid.NewGuid():N}");
+        var backupFilesRoot = Path.Combine(tempBackupRoot, BackupFilesFolderName);
 
-        if (Directory.Exists(backupRoot))
-            await DeleteDirectoryWithRetryAsync(backupRoot);
-
+        Directory.CreateDirectory(backupsRoot);
         Directory.CreateDirectory(backupFilesRoot);
 
-        progress?.Report("Creating backup snapshot...");
-
-        var modsDir = Path.Combine(gameRootDir, "Mods");
-        var backedUpFiles = new List<string>();
-
-        foreach (var relPath in registry.ActiveMods
-                     .SelectMany(mod => mod.Files)
-                     .Distinct(StringComparer.OrdinalIgnoreCase)
-                     .OrderBy(path => path, StringComparer.OrdinalIgnoreCase))
+        try
         {
-            var sourcePath = Path.Combine(modsDir, relPath);
-            if (!File.Exists(sourcePath))
-                continue;
+            progress?.Report("Creating backup snapshot...");
 
-            var destinationPath = Path.Combine(backupFilesRoot, relPath);
-            await CopyFileWithRetryAsync(sourcePath, destinationPath);
-            backedUpFiles.Add(relPath);
+            var modsDir = Path.Combine(gameRootDir, "Mods");
+            var backedUpFiles = new List<string>();
+
+            foreach (var relPath in registry.ActiveMods
+                         .SelectMany(mod => mod.Files)
+                         .Distinct(StringComparer.OrdinalIgnoreCase)
+                         .OrderBy(path => path, StringComparer.OrdinalIgnoreCase))
+            {
+                var sourcePath = Path.Combine(modsDir, relPath);
+                if (!File.Exists(sourcePath))
+                    continue;
+
+                var destinationPath = Path.Combine(backupFilesRoot, relPath);
+                await CopyFileWithRetryAsync(sourcePath, destinationPath);
+                backedUpFiles.Add(relPath);
+            }
+
+            var snapshot = new ApplyBackupSnapshot
+            {
+                CreatedAt = DateTime.Now,
+                ActivePresetName = registry.ActivePresetName,
+                ActiveMods = CloneActiveEntries(registry.ActiveMods),
+                ModGroups = new Dictionary<string, string>(registry.ModGroups, StringComparer.OrdinalIgnoreCase),
+                BackedUpFiles = backedUpFiles
+            };
+
+            await SaveLastApplyBackupAsync(tempBackupRoot, snapshot);
+
+            if (Directory.Exists(backupRoot))
+                Directory.Move(backupRoot, oldBackupRoot);
+
+            Directory.Move(tempBackupRoot, backupRoot);
+
+            if (Directory.Exists(oldBackupRoot))
+            {
+                try
+                {
+                    await DeleteDirectoryWithRetryAsync(oldBackupRoot);
+                }
+                catch
+                {
+                    // The new backup is already active; old backup cleanup can be retried later.
+                }
+            }
         }
-
-        var snapshot = new ApplyBackupSnapshot
+        catch
         {
-            CreatedAt = DateTime.Now,
-            ActivePresetName = registry.ActivePresetName,
-            ActiveMods = CloneActiveEntries(registry.ActiveMods),
-            ModGroups = new Dictionary<string, string>(registry.ModGroups, StringComparer.OrdinalIgnoreCase),
-            BackedUpFiles = backedUpFiles
-        };
+            if (!Directory.Exists(backupRoot) && Directory.Exists(oldBackupRoot))
+                Directory.Move(oldBackupRoot, backupRoot);
 
-        await SaveLastApplyBackupAsync(registryDir, snapshot);
+            throw;
+        }
+        finally
+        {
+            if (Directory.Exists(tempBackupRoot))
+            {
+                try
+                {
+                    await DeleteDirectoryWithRetryAsync(tempBackupRoot);
+                }
+                catch
+                {
+                    // Best-effort cleanup only; do not hide the original backup/apply failure.
+                }
+            }
+        }
     }
 
     public async Task<ApplyBackupSnapshot> RestoreLastApplyBackupAsync(
@@ -127,12 +169,11 @@ public sealed class BackupService
         throw new InvalidOperationException("The last apply backup could not be loaded.");
     }
 
-    private async Task SaveLastApplyBackupAsync(string registryDir, ApplyBackupSnapshot snapshot)
+    private async Task SaveLastApplyBackupAsync(string backupRoot, ApplyBackupSnapshot snapshot)
     {
-        var backupRoot = GetBackupRoot(registryDir);
         Directory.CreateDirectory(backupRoot);
 
-        var manifestPath = GetBackupManifestPath(registryDir);
+        var manifestPath = Path.Combine(backupRoot, BackupManifestFileName);
         var json = JsonSerializer.Serialize(snapshot, JsonOptions);
 
         for (int attempt = 0; attempt < MaxRetries; attempt++)
@@ -250,8 +291,11 @@ public sealed class BackupService
         }
     }
 
+    private static string GetBackupsRoot(string registryDir)
+        => Path.Combine(registryDir, BackupFolderName);
+
     private static string GetBackupRoot(string registryDir)
-        => Path.Combine(registryDir, BackupFolderName, LastApplyFolderName);
+        => Path.Combine(GetBackupsRoot(registryDir), LastApplyFolderName);
 
     private static string GetBackupFilesRoot(string registryDir)
         => Path.Combine(GetBackupRoot(registryDir), BackupFilesFolderName);

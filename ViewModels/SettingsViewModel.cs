@@ -203,6 +203,7 @@ public partial class SettingsViewModel : ObservableObject
             await _settingsService.SaveGameConfigAsync(SelectedProfile);
 
             // Update global settings
+            _settings.ActiveGameId = SelectedProfile.GameId;
             _settings.SetupCompleted = true;
             _settings.FontFamily = SelectedFontFamily;
             await _settingsService.SaveAsync(_settings);
@@ -214,6 +215,7 @@ public partial class SettingsViewModel : ObservableObject
         }
         catch (Exception ex)
         {
+            await SettingsService.LogErrorAsync(ex);
             NotificationHelper.ShowError("Save Error", $"Failed to save settings: {ex.Message}");
         }
     }
@@ -233,11 +235,31 @@ public partial class SettingsViewModel : ObservableObject
         try
         {
             await _settingsService.SaveGameConfigAsync(SelectedProfile);
+
+            var configuredProfiles = _settings.GameProfiles
+                .Where(profile => profile.IsConfigured)
+                .ToList();
+
+            if (string.Equals(_settings.ActiveGameId, SelectedProfile.GameId, StringComparison.OrdinalIgnoreCase))
+            {
+                var fallbackProfile = configuredProfiles
+                    .OrderByDescending(profile => profile.LastOpened ?? DateTime.MinValue)
+                    .FirstOrDefault();
+
+                if (fallbackProfile is not null)
+                    _settings.ActiveGameId = fallbackProfile.GameId;
+            }
+
+            _settings.SetupCompleted = configuredProfiles.Count > 0;
+            await _settingsService.SaveAsync(_settings);
+
             ErrorMessage = string.Empty;
             ValidationMessage = string.Empty;
+            _onSaved?.Invoke();
         }
         catch (Exception ex)
         {
+            await SettingsService.LogErrorAsync(ex);
             NotificationHelper.ShowError("Error", $"Failed to clear config: {ex.Message}");
         }
     }

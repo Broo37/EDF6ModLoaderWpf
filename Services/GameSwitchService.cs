@@ -6,7 +6,7 @@ namespace EDF6ModLoaderWpf.Services;
 /// <summary>
 /// Message broadcast when the active game changes.
 /// </summary>
-public record GameSwitchedMessage(GameProfile NewGame);
+public record GameSwitchedMessage(GameProfile NewGame, object? Sender = null);
 
 /// <summary>
 /// Coordinates switching between game profiles: persists the active game,
@@ -25,7 +25,7 @@ public sealed class GameSwitchService
     /// Switches the active game to <paramref name="gameId"/>, saves the choice,
     /// and broadcasts a <see cref="GameSwitchedMessage"/>.
     /// </summary>
-    public async Task<GameProfile?> SwitchAsync(string gameId, AppSettings settings)
+    public async Task<GameProfile?> SwitchAsync(string gameId, AppSettings settings, object? sender = null)
     {
         settings.ActiveGameId = gameId;
         await _settingsService.SaveAsync(settings);
@@ -38,7 +38,7 @@ public sealed class GameSwitchService
             profile.LastOpened = DateTime.Now;
             await _settingsService.SaveGameConfigAsync(profile);
 
-            WeakReferenceMessenger.Default.Send(new GameSwitchedMessage(profile));
+            WeakReferenceMessenger.Default.Send(new GameSwitchedMessage(profile, sender));
         }
 
         return profile;

@@ -318,7 +318,7 @@
                         ToolTip="Launch the active game (Ctrl+Shift+L)."/>
                 <Button Content="🚀 _Apply Mods"
                         Command="{Binding ApplyModsCommand}"
-                        IsEnabled="{Binding HasPendingChanges}"
+                        IsEnabled="{Binding CanApplyMods}"
                         Margin="0,0,8,0"
                         ToolTip="Apply current mods to the game folder (Ctrl+Shift+A)."
                         FontWeight="SemiBold"/>

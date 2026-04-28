@@ -27,7 +27,12 @@ public sealed class ModService
     /// Master apply: clears game Mods folder of previously managed files,
     /// then copies only winning files based on load order. Saves registry and updates statuses.
     /// </summary>
-    public async Task ApplyAllModsAsync(IList<ModEntry> mods, string gameRootDir, string registryDir, IProgress<string>? progress = null)
+    public async Task ApplyAllModsAsync(
+        IList<ModEntry> mods,
+        string gameRootDir,
+        string registryDir,
+        IProgress<string>? progress = null,
+        string? activePresetName = null)
     {
         // Step 1: Build the winner map
         progress?.Report("Building conflict map...");
@@ -64,7 +69,7 @@ public sealed class ModService
 
         // Step 4: Save updated registry
         progress?.Report("Saving registry...");
-        await _loadOrderService.SaveToRegistryAsync(mods, registryDir);
+        await _loadOrderService.SaveToRegistryAsync(mods, registryDir, activePresetName);
 
         // Step 5: Update conflict statuses on the UI
         progress?.Report("Updating statuses...");

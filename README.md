@@ -18,7 +18,7 @@ Built with WPF (.NET 10), MVVM architecture, and ModernWpfUI for a clean Windows
 - **Settings persistence** — Remembers game paths, theme, font, and preferences across sessions
 - **Toast notifications** — Non-intrusive status messages with auto-dismiss
 - **Dark/Light theme** — Follows system theme or manual override via ModernWpfUI
-- **Error logging** — Detailed error log saved to `%AppData%\EDF6ModManager\error.log`
+- **Error logging** — Detailed error log saved to `%AppData%\EDFModManager\error.log`
 
 ## Screenshots
 
@@ -44,7 +44,7 @@ dotnet run
 
 1. Launch the app and select your game (EDF 4.1 / 5 / 6)
 2. Set the game installation folder when prompted
-3. Place mod folders inside `[GameRoot]\Mods\`
+3. Import mods or place mod folders inside the configured Mods Library
 4. Enable/disable mods and arrange load order (higher number = higher priority)
 5. Click **Apply** to deploy mods to the game directory
 
@@ -72,10 +72,10 @@ App.xaml.cs      → DI container setup
 
 | File | Location |
 |------|----------|
-| Settings | `%AppData%\EDF6ModManager\settings.json` |
-| Error log | `%AppData%\EDF6ModManager\error.log` |
+| Settings | `%AppData%\EDFModManager\settings.json` |
+| Error log | `%AppData%\EDFModManager\error.log` |
 | Active mods registry | `[GameRoot]\Mods\active_mods.json` |
-| Mod metadata | `[GameRoot]\Mods\[ModName]\mod_info.json` |
+| Mod metadata | `[Mods Library]\[ModName]\mod_info.json` |
 
 ## License
 

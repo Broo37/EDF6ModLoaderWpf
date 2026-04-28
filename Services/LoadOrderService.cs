@@ -135,7 +135,9 @@ public sealed class LoadOrderService
             {
                 mod.IsActive = true;
                 mod.LoadOrder = regEntry.LoadOrder;
-                mod.Group = regEntry.Group;
+                mod.Group = registry.ModGroups.TryGetValue(mod.ModName, out var group)
+                    ? group
+                    : regEntry.Group;
             }
             else
             {
@@ -157,12 +159,32 @@ public sealed class LoadOrderService
     /// <summary>
     /// Saves the current mod states to the registry file.
     /// </summary>
-    public async Task SaveToRegistryAsync(IList<ModEntry> mods, string registryDir)
+    public async Task SaveToRegistryAsync(IList<ModEntry> mods, string registryDir, string? activePresetName = null)
     {
         var registry = await _fileService.LoadRegistryAsync(registryDir);
         registry.LastUpdated = DateTime.Now;
         registry.ActiveMods = BuildActiveEntries(mods);
         registry.ModGroups = BuildGroupMap(mods);
+        if (activePresetName is not null)
+            registry.ActivePresetName = activePresetName;
+
+        await _fileService.SaveRegistryAsync(registryDir, registry);
+    }
+
+    public async Task SaveGroupsAsync(IList<ModEntry> mods, string registryDir)
+    {
+        var registry = await _fileService.LoadRegistryAsync(registryDir);
+        var groups = BuildGroupMap(mods);
+
+        registry.LastUpdated = DateTime.Now;
+        registry.ModGroups = groups;
+
+        foreach (var activeEntry in registry.ActiveMods)
+        {
+            activeEntry.Group = groups.TryGetValue(activeEntry.Name, out var group)
+                ? group
+                : string.Empty;
+        }
 
         await _fileService.SaveRegistryAsync(registryDir, registry);
     }
@@ -202,16 +224,14 @@ public sealed class LoadOrderService
         preset.ActiveMods = CloneActiveEntries(activeEntries);
         preset.ModGroups = CloneGroupMap(modGroups);
 
-        registry.ActivePresetName = preset.Name;
         registry.LastUpdated = DateTime.Now;
-        registry.ActiveMods = CloneActiveEntries(activeEntries);
         registry.ModGroups = CloneGroupMap(modGroups);
 
         await _fileService.SaveRegistryAsync(registryDir, registry);
         return preset.Name;
     }
 
-    public async Task<bool> LoadPresetAsync(IList<ModEntry> mods, string registryDir, string presetName)
+    public async Task<ModPreset?> LoadPresetAsync(IList<ModEntry> mods, string registryDir, string presetName)
     {
         var normalizedName = NormalizePresetName(presetName);
         var registry = await _fileService.LoadRegistryAsync(registryDir);
@@ -219,7 +239,7 @@ public sealed class LoadOrderService
             string.Equals(p.Name, normalizedName, StringComparison.OrdinalIgnoreCase));
 
         if (preset is null)
-            return false;
+            return null;
 
         var presetLookup = preset.ActiveMods.ToDictionary(e => e.Name, StringComparer.OrdinalIgnoreCase);
 
@@ -243,13 +263,7 @@ public sealed class LoadOrderService
 
         ResequenceLoadOrders(mods);
 
-        registry.ActivePresetName = preset.Name;
-        registry.LastUpdated = DateTime.Now;
-        registry.ActiveMods = CloneActiveEntries(preset.ActiveMods);
-        registry.ModGroups = CloneGroupMap(preset.ModGroups);
-
-        await _fileService.SaveRegistryAsync(registryDir, registry);
-        return true;
+        return ClonePreset(preset);
     }
 
     public async Task<bool> DeletePresetAsync(string registryDir, string presetName)

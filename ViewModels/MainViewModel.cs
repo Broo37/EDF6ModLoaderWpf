@@ -175,8 +175,11 @@ public partial class MainViewModel : ObservableObject
     /// <summary>Wired up by MainWindow to confirm the pre-apply change summary.</summary>
     public Func<ApplySummaryPreview, bool>? ShowApplySummaryDialog { get; set; }
 
-    /// <summary>AppData directory for the active game's registry.</summary>
+    /// <summary>Directory for the active game's deployed-mod registry.</summary>
     private string ActiveRegistryDir =>
+        ActiveGame is not null ? Path.Combine(ActiveGame.GameRootPath, "Mods") : string.Empty;
+
+    private string LegacyActiveRegistryDir =>
         ActiveGame is not null ? SettingsService.GetGameAppDataFolder(ActiveGame.GameId) : string.Empty;
 
     private string ActiveExecutablePath =>
@@ -185,7 +188,15 @@ public partial class MainViewModel : ObservableObject
     public bool CanLaunchGame =>
         ActiveGame is not null && ActiveGame.IsConfigured && File.Exists(ActiveExecutablePath);
 
-    public bool CanApplyAndLaunch => HasPendingChanges && CanLaunchGame;
+    public bool CanApplyMods =>
+        HasPendingChanges &&
+        ActiveGame is not null &&
+        ActiveGame.IsConfigured &&
+        !string.IsNullOrWhiteSpace(ActiveGame.GameRootPath) &&
+        Directory.Exists(ActiveGame.GameRootPath) &&
+        !IsBusy;
+
+    public bool CanApplyAndLaunch => CanApplyMods && CanLaunchGame;
 
     public bool CanRestoreLastApply =>
         ActiveGame is not null && ActiveGame.IsConfigured && HasApplyBackupSnapshot;
@@ -222,6 +233,9 @@ public partial class MainViewModel : ObservableObject
         WeakReferenceMessenger.Default.Register<GameSwitchedMessage>(this, async (r, m) =>
         {
             var vm = (MainViewModel)r;
+            if (ReferenceEquals(m.Sender, vm))
+                return;
+
             await vm.ActivateGameAsync(m.NewGame, showToast: true);
         });
     }
@@ -311,14 +325,18 @@ public partial class MainViewModel : ObservableObject
         IsBusy = true;
         try
         {
-            // Save current game's load order before switching
-            if (ActiveGame?.IsConfigured == true && Mods.Count > 0)
+            if (HasPendingChanges)
             {
-                await _loadOrderService.SaveToRegistryAsync(Mods.ToList(), ActiveRegistryDir);
+                var confirmed = NotificationHelper.Confirm(
+                    "Discard Pending Changes",
+                    "You have unapplied mod changes for the current game. Switch games and discard those pending changes?");
+
+                if (!confirmed)
+                    return;
             }
 
             // Persist the switch and activate
-            var profile = await _gameSwitchService.SwitchAsync(gameId, _settings);
+            var profile = await _gameSwitchService.SwitchAsync(gameId, _settings, this);
             if (profile is not null)
                 await ActivateGameAsync(profile);
         }
@@ -367,18 +385,27 @@ public partial class MainViewModel : ObservableObject
     {
         if (mod is null || ActiveGame is null) return;
 
+        bool shouldActivate = mod.IsActive;
+
+        // The DataGrid checkbox is two-way bound, so WPF has already written the
+        // new IsActive value by the time this command runs. Restore the previous
+        // value before snapshotting so undo captures the real pre-click state.
+        mod.IsActive = !shouldActivate;
+
         _loadOrderService.PushUndoState(Mods);
         CanUndo = _loadOrderService.CanUndo;
 
-        if (mod.IsActive)
+        if (shouldActivate)
         {
             // Enabling — assign next load order
+            mod.IsActive = true;
             LoadOrderService.AssignNextLoadOrder(mod, Mods);
             ShowToast($"✅ {mod.ModName} enabled (#{mod.LoadOrder}).");
         }
         else
         {
             // Disabling — reset load order and resequence
+            mod.IsActive = false;
             mod.LoadOrder = 0;
             LoadOrderService.ResequenceLoadOrders(Mods.ToList());
             ShowToast($"❌ {mod.ModName} disabled.");
@@ -456,7 +483,9 @@ public partial class MainViewModel : ObservableObject
 
         mod.Group = groupName.Trim();
 
-        await _loadOrderService.SaveToRegistryAsync(Mods.ToList(), ActiveRegistryDir);
+        await _loadOrderService.SaveGroupsAsync(Mods.ToList(), ActiveRegistryDir);
+        UpdatePresetDirtyState();
+        UpdateStatusBar();
         ShowToast(string.IsNullOrEmpty(mod.Group)
             ? $"🗂️ {mod.ModName} removed from group."
             : $"🗂️ {mod.ModName} → group \"{mod.Group}\"");
@@ -584,17 +613,12 @@ public partial class MainViewModel : ObservableObject
     private void ShowLoadOrderView()
     {
         LoadOrderViewActive = true;
-        var ordered = Mods.Where(m => m.IsActive).OrderBy(m => m.LoadOrder).ToList();
-        Mods.Clear();
-        foreach (var m in ordered)
-            Mods.Add(m);
     }
 
     [RelayCommand]
-    private async Task ShowAllModsViewAsync()
+    private void ShowAllModsView()
     {
         LoadOrderViewActive = false;
-        await RefreshAsync();
     }
 
     // ── Conflict Panel ───────────────────────────────────────────────
@@ -765,6 +789,10 @@ public partial class MainViewModel : ObservableObject
         {
             var savedName = await _loadOrderService.SavePresetAsync(Mods.ToList(), ActiveRegistryDir, presetName);
             await RefreshPresetStateAsync(savedName);
+            var savedPreset = await _loadOrderService.GetPresetAsync(ActiveRegistryDir, savedName);
+            if (savedPreset is not null)
+                SetActivePresetSnapshot(savedPreset);
+
             PresetNameInput = string.Empty;
             ShowToast($"💾 Preset \"{savedName}\" saved.");
         }
@@ -791,13 +819,15 @@ public partial class MainViewModel : ObservableObject
             _loadOrderService.PushUndoState(Mods);
             CanUndo = _loadOrderService.CanUndo;
 
-            if (!await _loadOrderService.LoadPresetAsync(Mods, ActiveRegistryDir, SelectedPresetName))
+            var loadedPreset = await _loadOrderService.LoadPresetAsync(Mods, ActiveRegistryDir, SelectedPresetName);
+            if (loadedPreset is null)
             {
                 ShowToast("Selected preset could not be loaded.", isError: true);
                 return;
             }
 
-            await RefreshPresetStateAsync(SelectedPresetName);
+            await RefreshPresetStateAsync(loadedPreset.Name);
+            SetActivePresetSnapshot(loadedPreset);
             MarkPendingChanges();
             ShowToast($"📚 Preset \"{SelectedPresetName}\" loaded. Click Apply Mods to deploy it.");
         }
@@ -1046,7 +1076,22 @@ public partial class MainViewModel : ObservableObject
 
     private async Task<bool> ApplyModsInternalAsync()
     {
-        if (ActiveGame is null) return false;
+        if (IsBusy)
+            return false;
+
+        if (ActiveGame is null || !ActiveGame.IsConfigured ||
+            string.IsNullOrWhiteSpace(ActiveGame.GameRootPath) ||
+            !Directory.Exists(ActiveGame.GameRootPath))
+        {
+            ShowToast("Configure a valid game before applying mods.", isError: true);
+            return false;
+        }
+
+        if (!HasPendingChanges)
+        {
+            ShowToast("No pending mod changes to apply.");
+            return false;
+        }
 
         if (!await ConfirmApplySummaryAsync())
             return false;
@@ -1056,7 +1101,12 @@ public partial class MainViewModel : ObservableObject
         try
         {
             var progress = new Progress<string>(msg => StatusText = msg);
-            await _modService.ApplyAllModsAsync(Mods.ToList(), ActiveGame.GameRootPath, ActiveRegistryDir, progress);
+            await _modService.ApplyAllModsAsync(
+                Mods.ToList(),
+                ActiveGame.GameRootPath,
+                ActiveRegistryDir,
+                progress,
+                ActivePresetName);
             RefreshConflictReport();
             UpdateStatusBar();
             HasPendingChanges = false;
@@ -1267,6 +1317,8 @@ public partial class MainViewModel : ObservableObject
         bool created = _fileService.EnsureModsFolderStructure(ActiveGame.GameRootPath);
         if (created && showCreatedToast)
             ShowToast("📁 Mods folder structure created / verified.");
+
+        await _fileService.MigrateRegistryAsync(LegacyActiveRegistryDir, ActiveRegistryDir);
 
         var entries = _fileService.ScanModsLibrary(ActiveGame.ModLibraryPath);
         _fileService.AnnotateModWarnings(entries, ActiveGame.GameId);
@@ -1726,6 +1778,17 @@ public partial class MainViewModel : ObservableObject
         PresetNameInput = string.Empty;
     }
 
+    private void SetActivePresetSnapshot(ModPreset preset)
+    {
+        _activePresetSnapshot = preset;
+        ActivePresetName = preset.Name;
+        SelectedPresetName = AvailablePresets.FirstOrDefault(p =>
+                                string.Equals(p, preset.Name, StringComparison.OrdinalIgnoreCase))
+                            ?? preset.Name;
+        UpdatePresetDirtyState();
+        UpdateStatusBar();
+    }
+
     private ModEntry? FindModByName(string modName)
     {
         return Mods.FirstOrDefault(m => string.Equals(m.ModName, modName, StringComparison.OrdinalIgnoreCase));
@@ -1868,6 +1931,7 @@ public partial class MainViewModel : ObservableObject
         SyncRecentImportsForActiveGame();
         UpdateApplyBackupState();
         OnPropertyChanged(nameof(CanLaunchGame));
+        OnPropertyChanged(nameof(CanApplyMods));
         OnPropertyChanged(nameof(CanApplyAndLaunch));
         OnPropertyChanged(nameof(CanRestoreLastApply));
         OnPropertyChanged(nameof(CanManagePresets));
@@ -1884,6 +1948,13 @@ public partial class MainViewModel : ObservableObject
 
     partial void OnHasPendingChangesChanged(bool value)
     {
+        OnPropertyChanged(nameof(CanApplyMods));
+        OnPropertyChanged(nameof(CanApplyAndLaunch));
+    }
+
+    partial void OnIsBusyChanged(bool value)
+    {
+        OnPropertyChanged(nameof(CanApplyMods));
         OnPropertyChanged(nameof(CanApplyAndLaunch));
     }
 
