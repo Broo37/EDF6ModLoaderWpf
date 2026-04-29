@@ -169,6 +169,18 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty]
     private bool _isGroupViewActive;
 
+    [ObservableProperty]
+    private bool _isSidebarCollapsed;
+
+    [ObservableProperty]
+    private string _themeState = "System";
+
+    [ObservableProperty]
+    private string _themeButtonIcon = "🖥️";
+
+    [ObservableProperty]
+    private string _themeButtonLabel = "Auto";
+
     /// <summary>Whether the first-time setup (Welcome screen) is needed.</summary>
     public bool NeedsFirstTimeSetup { get; private set; }
 
@@ -1536,6 +1548,46 @@ public partial class MainViewModel : ObservableObject
     private void SelectLatestRecentImport()
     {
         SelectRecentImport(LatestRecentImport);
+    }
+
+    public void InitializeSidebarAndTheme()
+    {
+        IsSidebarCollapsed = _settings.SidebarCollapsed;
+        ThemeState = _settings.ThemeOverride ?? "System";
+        UpdateThemeButton();
+    }
+
+    private void UpdateThemeButton()
+    {
+        (ThemeButtonIcon, ThemeButtonLabel) = ThemeState switch
+        {
+            "Dark"  => ("🌙", "Dark"),
+            "Light" => ("☀️", "Light"),
+            _       => ("🖥️", "Auto")
+        };
+    }
+
+    [RelayCommand]
+    private async Task ToggleSidebarAsync()
+    {
+        IsSidebarCollapsed = !IsSidebarCollapsed;
+        _settings.SidebarCollapsed = IsSidebarCollapsed;
+        await _settingsService.SaveAsync(_settings);
+    }
+
+    [RelayCommand]
+    private async Task ToggleThemeAsync()
+    {
+        ThemeState = ThemeState switch
+        {
+            "Dark"  => "Light",
+            "Light" => "System",
+            _       => "Dark"
+        };
+        UpdateThemeButton();
+        _settings.ThemeOverride = ThemeState == "System" ? null : ThemeState;
+        ThemeHelper.LoadSavedOrSystemTheme(_settings.ThemeOverride);
+        await _settingsService.SaveAsync(_settings);
     }
 
     [RelayCommand]
