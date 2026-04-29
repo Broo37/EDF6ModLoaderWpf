@@ -1,0 +1,1788 @@
+# UI Redesign — Sci-Fi Command Center Implementation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** Redesign MainWindow with a Sci-Fi Command Center aesthetic — deep navy/purple palette, collapsible left sidebar, unified light/dark theme system with system-follow + user override.
+
+**Architecture:** Two new `ResourceDictionary` files define all color tokens; `ThemeHelper` manages system detection and user overrides; `MainWindow.xaml` restructures from vertical stack to two-column sidebar + main content layout; `MainViewModel` gets sidebar collapse state and theme cycling properties; `MainWindow.xaml.cs` runs the sidebar width animation.
+
+**Tech Stack:** WPF (.NET 10), ModernWpfUI (`ModernWpf`), CommunityToolkit.Mvvm, `Microsoft.Win32` (registry read for system theme)
+
+---
+
+## File Map
+
+| File | Action |
+|---|---|
+| `Themes/DarkTheme.xaml` | **Create** — dark palette `ResourceDictionary` |
+| `Themes/LightTheme.xaml` | **Create** — light palette `ResourceDictionary` |
+| `Helpers/InverseBoolToVisibilityConverter.cs` | **Create** — sidebar label visibility helper |
+| `Models/AppSettings.cs` | **Modify** — add `ThemeOverride` and `IsSidebarCollapsed` |
+| `Helpers/ThemeHelper.cs` | **Rewrite** — full theme switching + system detection |
+| `App.xaml` | **Modify** — merge initial theme dictionary |
+| `App.xaml.cs` | **Modify** — call `LoadSavedOrSystemTheme` on startup |
+| `ViewModels/MainViewModel.cs` | **Modify** — add sidebar + theme observable properties and commands |
+| `MainWindow.xaml` | **Rewrite** — two-column layout, sidebar, restyled content |
+| `MainWindow.xaml.cs` | **Modify** — sidebar animation, loadout popup handler, remove accent color calls |
+
+---
+
+## Task 1: Create Theme ResourceDictionaries
+
+**Files:**
+- Create: `Themes/DarkTheme.xaml`
+- Create: `Themes/LightTheme.xaml`
+
+- [ ] **Step 1: Create `Themes/DarkTheme.xaml`**
+
+```xml
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <SolidColorBrush x:Key="AppBgBrush"         Color="#0B0F1A"/>
+    <SolidColorBrush x:Key="SurfaceBrush"        Color="#111827"/>
+    <SolidColorBrush x:Key="SurfaceBorderBrush"  Color="#1E2D4A"/>
+    <SolidColorBrush x:Key="SidebarBgBrush"      Color="#0D1323"/>
+    <SolidColorBrush x:Key="AccentBrush"         Color="#6C63FF"/>
+    <SolidColorBrush x:Key="AccentCyanBrush"     Color="#00D4FF"/>
+    <SolidColorBrush x:Key="SuccessBrush"        Color="#22C55E"/>
+    <SolidColorBrush x:Key="WarningBrush"        Color="#F59E0B"/>
+    <SolidColorBrush x:Key="DangerBrush"         Color="#EF4444"/>
+    <SolidColorBrush x:Key="TextPrimaryBrush"    Color="#E2E8F0"/>
+    <SolidColorBrush x:Key="TextMutedBrush"      Color="#64748B"/>
+    <SolidColorBrush x:Key="StatusBarBgBrush"    Color="#080C15"/>
+
+    <Color x:Key="AccentColor">#6C63FF</Color>
+    <Color x:Key="WarningColor">#F59E0B</Color>
+    <Color x:Key="SuccessColor">#22C55E</Color>
+    <Color x:Key="DangerColor">#EF4444</Color>
+</ResourceDictionary>
+```
+
+- [ ] **Step 2: Create `Themes/LightTheme.xaml`**
+
+```xml
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <SolidColorBrush x:Key="AppBgBrush"         Color="#F0F4FF"/>
+    <SolidColorBrush x:Key="SurfaceBrush"        Color="#FFFFFF"/>
+    <SolidColorBrush x:Key="SurfaceBorderBrush"  Color="#C7D2FE"/>
+    <SolidColorBrush x:Key="SidebarBgBrush"      Color="#EEF2FF"/>
+    <SolidColorBrush x:Key="AccentBrush"         Color="#5B50E8"/>
+    <SolidColorBrush x:Key="AccentCyanBrush"     Color="#0EA5E9"/>
+    <SolidColorBrush x:Key="SuccessBrush"        Color="#16A34A"/>
+    <SolidColorBrush x:Key="WarningBrush"        Color="#D97706"/>
+    <SolidColorBrush x:Key="DangerBrush"         Color="#DC2626"/>
+    <SolidColorBrush x:Key="TextPrimaryBrush"    Color="#1E1B4B"/>
+    <SolidColorBrush x:Key="TextMutedBrush"      Color="#6B7280"/>
+    <SolidColorBrush x:Key="StatusBarBgBrush"    Color="#E8ECF8"/>
+
+    <Color x:Key="AccentColor">#5B50E8</Color>
+    <Color x:Key="WarningColor">#D97706</Color>
+    <Color x:Key="SuccessColor">#16A34A</Color>
+    <Color x:Key="DangerColor">#DC2626</Color>
+</ResourceDictionary>
+```
+
+- [ ] **Step 3: Build to verify XAML is valid**
+
+Run: `dotnet build`
+Expected: Build succeeded, 0 errors
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add Themes/DarkTheme.xaml Themes/LightTheme.xaml
+git commit -m "feat: add dark and light theme resource dictionaries"
+```
+
+---
+
+## Task 2: InverseBoolToVisibilityConverter
+
+**Files:**
+- Create: `Helpers/InverseBoolToVisibilityConverter.cs`
+
+- [ ] **Step 1: Create the converter**
+
+```csharp
+using System.Globalization;
+using System.Windows;
+using System.Windows.Data;
+
+namespace EDF6ModLoaderWpf.Helpers;
+
+public sealed class InverseBoolToVisibilityConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+        => value is true ? Visibility.Collapsed : Visibility.Visible;
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+        => throw new NotSupportedException();
+}
+```
+
+- [ ] **Step 2: Build**
+
+Run: `dotnet build`
+Expected: Build succeeded, 0 errors
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add Helpers/InverseBoolToVisibilityConverter.cs
+git commit -m "feat: add InverseBoolToVisibilityConverter helper"
+```
+
+---
+
+## Task 3: AppSettings + ThemeHelper
+
+**Files:**
+- Modify: `Models/AppSettings.cs`
+- Modify: `Helpers/ThemeHelper.cs`
+
+- [ ] **Step 1: Add two properties to `AppSettings`**
+
+Open `Models/AppSettings.cs`. After the existing `FontFamily` property, add:
+
+```csharp
+    /// <summary>
+    /// User theme override: "Dark", "Light", or null to follow the Windows system theme.
+    /// </summary>
+    [JsonPropertyName("themeOverride")]
+    public string? ThemeOverride { get; set; }
+
+    /// <summary>
+    /// Whether the sidebar starts collapsed. Persisted across sessions.
+    /// </summary>
+    [JsonPropertyName("sidebarCollapsed")]
+    public bool SidebarCollapsed { get; set; }
+```
+
+- [ ] **Step 2: Rewrite `Helpers/ThemeHelper.cs`**
+
+Replace the entire file content with:
+
+```csharp
+using Microsoft.Win32;
+using ModernWpf;
+using System.Linq;
+using System.Windows;
+
+namespace EDF6ModLoaderWpf.Helpers;
+
+public static class ThemeHelper
+{
+    private const string ThemeRegKey = @"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize";
+    private const string ThemeRegValue = "AppsUseLightTheme";
+
+    private static readonly Uri DarkUri  = new("Themes/DarkTheme.xaml",  UriKind.Relative);
+    private static readonly Uri LightUri = new("Themes/LightTheme.xaml", UriKind.Relative);
+
+    public static void ApplyTheme(bool isDark)
+    {
+        var dicts = Application.Current.Resources.MergedDictionaries;
+        var existing = dicts.FirstOrDefault(d => d.Source == DarkUri || d.Source == LightUri);
+        if (existing != null) dicts.Remove(existing);
+
+        dicts.Add(new ResourceDictionary { Source = isDark ? DarkUri : LightUri });
+        ThemeManager.Current.ApplicationTheme = isDark ? ApplicationTheme.Dark : ApplicationTheme.Light;
+    }
+
+    public static bool GetSystemTheme()
+    {
+        using var key = Registry.CurrentUser.OpenSubKey(ThemeRegKey);
+        var value = key?.GetValue(ThemeRegValue);
+        return value is int i && i == 0; // 0 = dark, 1 = light
+    }
+
+    public static void LoadSavedOrSystemTheme(string? themeOverride)
+    {
+        bool isDark = themeOverride switch
+        {
+            "Dark"  => true,
+            "Light" => false,
+            _       => GetSystemTheme()
+        };
+        ApplyTheme(isDark);
+    }
+}
+```
+
+- [ ] **Step 3: Build**
+
+Run: `dotnet build`
+Expected: Build succeeded, 0 errors
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add Models/AppSettings.cs Helpers/ThemeHelper.cs
+git commit -m "feat: add theme override to AppSettings and rewrite ThemeHelper"
+```
+
+---
+
+## Task 4: App.xaml + App.xaml.cs startup wiring
+
+**Files:**
+- Modify: `App.xaml`
+- Modify: `App.xaml.cs`
+
+- [ ] **Step 1: Replace `App.xaml` content**
+
+```xml
+<Application x:Class="EDF6ModLoaderWpf.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="http://schemas.modernwpf.com/2019">
+    <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ui:ThemeResources />
+                <ui:XamlControlsResources />
+                <ResourceDictionary Source="Themes/DarkTheme.xaml"/>
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </Application.Resources>
+</Application>
+```
+
+- [ ] **Step 2: Add theme + sidebar load call in `App.xaml.cs`**
+
+In `App.xaml.cs`, inside `OnStartup`, after `FontHelper.ApplyFont(settings.FontFamily);`, add:
+
+```csharp
+                ThemeHelper.LoadSavedOrSystemTheme(settings.ThemeOverride);
+```
+
+- [ ] **Step 3: Build**
+
+Run: `dotnet build`
+Expected: Build succeeded, 0 errors
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add App.xaml App.xaml.cs
+git commit -m "feat: wire theme loading into app startup"
+```
+
+---
+
+## Task 5: MainViewModel — sidebar + theme properties
+
+**Files:**
+- Modify: `ViewModels/MainViewModel.cs`
+
+- [ ] **Step 1: Add observable properties**
+
+In `MainViewModel.cs`, after the existing `[ObservableProperty] private bool _isGroupViewActive;` block, add:
+
+```csharp
+    [ObservableProperty]
+    private bool _isSidebarCollapsed;
+
+    [ObservableProperty]
+    private string _themeState = "System";
+
+    [ObservableProperty]
+    private string _themeButtonIcon = "🖥️";
+
+    [ObservableProperty]
+    private string _themeButtonLabel = "Auto";
+```
+
+- [ ] **Step 2: Add `InitializeSidebarAndTheme` method**
+
+Add this method near the bottom of the ViewModel, before the closing brace. It reads from the already-loaded `_settings` field (populated during `InitializeAsync()`):
+
+```csharp
+    public void InitializeSidebarAndTheme()
+    {
+        IsSidebarCollapsed = _settings.SidebarCollapsed;
+        ThemeState = _settings.ThemeOverride ?? "System";
+        UpdateThemeButton();
+    }
+
+    private void UpdateThemeButton()
+    {
+        (ThemeButtonIcon, ThemeButtonLabel) = ThemeState switch
+        {
+            "Dark"  => ("🌙", "Dark"),
+            "Light" => ("☀️", "Light"),
+            _       => ("🖥️", "Auto")
+        };
+    }
+```
+
+- [ ] **Step 3: Add `ToggleSidebarCommand` and `ToggleThemeCommand`**
+
+Add these relay commands:
+
+```csharp
+    [RelayCommand]
+    private async Task ToggleSidebarAsync()
+    {
+        IsSidebarCollapsed = !IsSidebarCollapsed;
+        _settings.SidebarCollapsed = IsSidebarCollapsed;
+        await _settingsService.SaveAsync(_settings);
+    }
+
+    [RelayCommand]
+    private async Task ToggleThemeAsync()
+    {
+        ThemeState = ThemeState switch
+        {
+            "Dark"  => "Light",
+            "Light" => "System",
+            _       => "Dark"
+        };
+        UpdateThemeButton();
+        _settings.ThemeOverride = ThemeState == "System" ? null : ThemeState;
+        ThemeHelper.LoadSavedOrSystemTheme(_settings.ThemeOverride);
+        await _settingsService.SaveAsync(_settings);
+    }
+```
+
+- [ ] **Step 4: Build**
+
+Run: `dotnet build`
+Expected: Build succeeded, 0 errors. Source generators will create `ToggleSidebarCommand` and `ToggleThemeCommand`.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add ViewModels/MainViewModel.cs
+git commit -m "feat: add sidebar collapse and theme toggle to MainViewModel"
+```
+
+---
+
+## Task 6: MainWindow.xaml — Full Rewrite
+
+**Files:**
+- Rewrite: `MainWindow.xaml`
+
+Replace the entire file with the following. Read it carefully before applying — every binding maps to an existing ViewModel property.
+
+- [ ] **Step 1: Replace `MainWindow.xaml` with the new layout**
+
+```xml
+<Window x:Class="EDF6ModLoaderWpf.MainWindow"
+        x:Name="RootWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:ui="http://schemas.modernwpf.com/2019"
+        xmlns:local="clr-namespace:EDF6ModLoaderWpf.Helpers"
+        mc:Ignorable="d"
+        Title="{Binding WindowTitle, FallbackValue='🛡️ EDF Mod Manager'}"
+        Height="760" Width="1200"
+        MinHeight="620" MinWidth="900"
+        WindowStartupLocation="CenterScreen"
+        AllowDrop="True"
+        PreviewDragOver="Window_PreviewDragOver"
+        PreviewDragLeave="Window_PreviewDragLeave"
+        PreviewDrop="Window_PreviewDrop"
+        Background="{DynamicResource AppBgBrush}"
+        ui:WindowHelper.UseModernWindowStyle="True">
+
+    <Window.InputBindings>
+        <KeyBinding Key="F5"              Command="{Binding DataContext.RefreshCommand,              ElementName=RootWindow}"/>
+        <KeyBinding Key="I" Modifiers="Control+Shift" Command="{Binding DataContext.ImportZipCommand,    ElementName=RootWindow}"/>
+        <KeyBinding Key="O" Modifiers="Control+Shift" Command="{Binding DataContext.ImportFolderCommand, ElementName=RootWindow}"/>
+        <KeyBinding Key="L" Modifiers="Control+Shift" Command="{Binding DataContext.LaunchGameCommand,   ElementName=RootWindow}"/>
+        <KeyBinding Key="A" Modifiers="Control+Shift" Command="{Binding DataContext.ApplyModsCommand,    ElementName=RootWindow}"/>
+        <KeyBinding Key="A" Modifiers="Control+Alt"   Command="{Binding DataContext.ApplyAndLaunchCommand, ElementName=RootWindow}"/>
+    </Window.InputBindings>
+
+    <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVis"/>
+        <local:InverseBoolToVisibilityConverter x:Key="InvBoolToVis"/>
+
+        <!-- ── Card styles ── -->
+        <Style x:Key="PanelCard" TargetType="Border">
+            <Setter Property="CornerRadius" Value="10"/>
+            <Setter Property="Padding" Value="14"/>
+            <Setter Property="Background" Value="{DynamicResource SurfaceBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource SurfaceBorderBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+        </Style>
+
+        <Style x:Key="CompactCard" TargetType="Border" BasedOn="{StaticResource PanelCard}">
+            <Setter Property="Padding" Value="10"/>
+            <Setter Property="CornerRadius" Value="8"/>
+        </Style>
+
+        <!-- ── Text styles ── -->
+        <Style x:Key="KickerText" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="10"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextMutedBrush}"/>
+            <Setter Property="CharacterSpacing" Value="80"/>
+        </Style>
+
+        <Style x:Key="SectionTitleText" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+
+        <Style x:Key="MutedText" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextMutedBrush}"/>
+        </Style>
+
+        <!-- ── Button styles ── -->
+        <Style x:Key="InlineSmallButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+            <Setter Property="MinWidth" Value="0"/>
+            <Setter Property="MinHeight" Value="0"/>
+            <Setter Property="Padding" Value="8,4"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+
+        <Style x:Key="SidebarButtonStyle" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+            <Setter Property="HorizontalContentAlignment" Value="Left"/>
+            <Setter Property="Padding" Value="10,9"/>
+            <Setter Property="MinWidth" Value="0"/>
+            <Setter Property="MinHeight" Value="0"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
+        </Style>
+
+        <Style x:Key="SidebarIconButtonStyle" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+            <Setter Property="MinWidth" Value="0"/>
+            <Setter Property="MinHeight" Value="0"/>
+            <Setter Property="Padding" Value="6,4"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="HorizontalAlignment" Value="Center"/>
+        </Style>
+
+        <Style x:Key="DeployPrimaryButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+            <Setter Property="Background" Value="{DynamicResource AccentBrush}"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="HorizontalContentAlignment" Value="Left"/>
+            <Setter Property="Padding" Value="10,10"/>
+            <Setter Property="MinWidth" Value="0"/>
+            <Setter Property="MinHeight" Value="0"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Effect">
+                <Setter.Value>
+                    <DropShadowEffect Color="#6C63FF" BlurRadius="14" ShadowDepth="0" Opacity="0.55"/>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="DeploySecondaryButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+            <Setter Property="HorizontalContentAlignment" Value="Left"/>
+            <Setter Property="Padding" Value="10,9"/>
+            <Setter Property="MinWidth" Value="0"/>
+            <Setter Property="MinHeight" Value="0"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
+        </Style>
+
+        <!-- ── DataGrid styles ── -->
+        <Style x:Key="DataGridCheckBoxStyle" TargetType="CheckBox" BasedOn="{StaticResource {x:Type CheckBox}}">
+            <Setter Property="MinWidth" Value="0"/>
+            <Setter Property="MinHeight" Value="0"/>
+            <Setter Property="HorizontalAlignment" Value="Center"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+
+        <Style x:Key="ModGridRowStyle" TargetType="DataGridRow">
+            <Setter Property="MinHeight" Value="48"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsActive}" Value="True">
+                    <Setter Property="Background" Value="#1022C55E"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding IsHighRisk}" Value="True">
+                    <Setter Property="Background" Value="#0DEF4444"/>
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style x:Key="ModGridCellStyle" TargetType="DataGridCell">
+            <Setter Property="Padding" Value="8,6"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="BorderThickness" Value="0"/>
+        </Style>
+
+        <Style x:Key="CenteredCellText" TargetType="TextBlock">
+            <Setter Property="HorizontalAlignment" Value="Center"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="TextAlignment" Value="Center"/>
+        </Style>
+
+        <!-- ── Recent import card template ── -->
+        <DataTemplate x:Key="RecentImportCardTemplate">
+            <Border Style="{StaticResource CompactCard}" Margin="0,0,8,0" MinWidth="210">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="📦" FontSize="20" Margin="0,0,10,0" VerticalAlignment="Top"/>
+                    <StackPanel Grid.Column="1">
+                        <DockPanel>
+                            <TextBlock Text="{Binding ModName}" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource TextPrimaryBrush}"
+                                       TextTrimming="CharacterEllipsis"/>
+                            <TextBlock DockPanel.Dock="Right" Text="📌" Margin="6,0,0,0"
+                                       Visibility="{Binding IsPinned, Converter={StaticResource BoolToVis}}"/>
+                        </DockPanel>
+                        <TextBlock Style="{StaticResource MutedText}" Margin="0,2,0,0">
+                            <Run Text="{Binding SourceLabel}"/>
+                            <Run Text=" · "/>
+                            <Run Text="{Binding ImportedFileCount}"/>
+                            <Run Text=" files · "/>
+                            <Run Text="{Binding ImportedAtLabel}"/>
+                        </TextBlock>
+                        <TextBlock Style="{StaticResource MutedText}" Margin="0,2,0,0"
+                                   Visibility="{Binding ReplacedExisting, Converter={StaticResource BoolToVis}}"
+                                   Text="♻️ Replaced existing"/>
+                        <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                            <Button Margin="0,0,4,0"
+                                    Style="{StaticResource InlineSmallButton}"
+                                    Command="{Binding DataContext.ToggleRecentImportPinCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                    CommandParameter="{Binding}"
+                                    ToolTip="Pin/unpin">
+                                <Button.Style>
+                                    <Style TargetType="Button" BasedOn="{StaticResource InlineSmallButton}">
+                                        <Setter Property="Content" Value="📌 Pin"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsPinned}" Value="True">
+                                                <Setter Property="Content" Value="📍 Unpin"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Button.Style>
+                            </Button>
+                            <Button Content="🎯 Select"
+                                    Style="{StaticResource InlineSmallButton}"
+                                    Margin="0,0,4,0"
+                                    Tag="RecentImportPrimaryAction"
+                                    PreviewKeyDown="RecentImportCardPrimaryAction_PreviewKeyDown"
+                                    Command="{Binding DataContext.SelectRecentImportCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                    CommandParameter="{Binding}"/>
+                            <Button Content="📁 Open"
+                                    Style="{StaticResource InlineSmallButton}"
+                                    Command="{Binding DataContext.OpenRecentImportFolderCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                    CommandParameter="{Binding}"/>
+                        </StackPanel>
+                    </StackPanel>
+                </Grid>
+            </Border>
+        </DataTemplate>
+    </Window.Resources>
+
+    <!-- ═══════════════════════════════════════════════════════ -->
+    <!--  ROOT: Two-column grid — Sidebar | Main                -->
+    <!-- ═══════════════════════════════════════════════════════ -->
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto"/>
+            <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+
+        <!-- ══════════════════════════════════ -->
+        <!--  SIDEBAR                           -->
+        <!-- ══════════════════════════════════ -->
+        <Border x:Name="SidebarBorder"
+                Grid.Column="0"
+                Width="260"
+                Background="{DynamicResource SidebarBgBrush}">
+            <Grid>
+                <!-- Left accent stripe -->
+                <Border Width="3" HorizontalAlignment="Left"
+                        Background="{DynamicResource AccentBrush}"/>
+
+                <!-- Sidebar content offset past the stripe -->
+                <DockPanel Margin="3,0,0,0">
+
+                    <!-- ── Bottom controls (docked first so spacer fills middle) ── -->
+                    <StackPanel DockPanel.Dock="Bottom" Margin="8,0,8,12">
+                        <Separator Margin="0,0,0,8"
+                                   Background="{DynamicResource SurfaceBorderBrush}"/>
+
+                        <!-- Settings -->
+                        <Button Style="{StaticResource SidebarButtonStyle}"
+                                Command="{Binding OpenSettingsCommand}"
+                                Margin="0,0,0,2"
+                                ToolTip="Open settings">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="⚙️" FontSize="16" VerticalAlignment="Center"/>
+                                <TextBlock Text=" Settings"
+                                           Margin="4,0,0,0"
+                                           VerticalAlignment="Center"
+                                           Visibility="{Binding IsSidebarCollapsed, Converter={StaticResource InvBoolToVis}}"/>
+                            </StackPanel>
+                        </Button>
+
+                        <!-- Theme toggle -->
+                        <Button Style="{StaticResource SidebarButtonStyle}"
+                                Command="{Binding ToggleThemeCommand}"
+                                Margin="0,0,0,2"
+                                ToolTip="Cycle theme: Dark → Light → System auto">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="{Binding ThemeButtonIcon}" FontSize="16" VerticalAlignment="Center"/>
+                                <TextBlock Text="{Binding ThemeButtonLabel}"
+                                           Margin="4,0,0,0"
+                                           VerticalAlignment="Center"
+                                           Visibility="{Binding IsSidebarCollapsed, Converter={StaticResource InvBoolToVis}}"/>
+                            </StackPanel>
+                        </Button>
+
+                        <!-- Collapse toggle -->
+                        <Button Style="{StaticResource SidebarButtonStyle}"
+                                Click="ToggleSidebar_Click"
+                                ToolTip="Collapse / expand sidebar">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock FontSize="14" VerticalAlignment="Center">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Text" Value="◀ Collapse"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsSidebarCollapsed}" Value="True">
+                                                    <Setter Property="Text" Value="▶"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                            </StackPanel>
+                        </Button>
+                    </StackPanel>
+
+                    <!-- ── Branding (top) ── -->
+                    <Border DockPanel.Dock="Top"
+                            Padding="10,14,10,12"
+                            BorderBrush="{DynamicResource SurfaceBorderBrush}"
+                            BorderThickness="0,0,0,1">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="🛡️" FontSize="22" VerticalAlignment="Center"/>
+                            <StackPanel Margin="8,0,0,0"
+                                        Visibility="{Binding IsSidebarCollapsed, Converter={StaticResource InvBoolToVis}}">
+                                <TextBlock Text="EDF MOD MGR"
+                                           FontSize="13" FontWeight="Bold"
+                                           Foreground="{DynamicResource TextPrimaryBrush}"/>
+                                <TextBlock Text="{Binding WindowTitle}"
+                                           FontSize="10"
+                                           Foreground="{DynamicResource TextMutedBrush}"
+                                           TextTrimming="CharacterEllipsis"/>
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- ── Scrollable middle sections ── -->
+                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                        <StackPanel Margin="8,12,8,4">
+
+                            <!-- GAME section -->
+                            <TextBlock Text="GAME"
+                                       Style="{StaticResource KickerText}"
+                                       Margin="4,0,0,6"
+                                       Visibility="{Binding IsSidebarCollapsed, Converter={StaticResource InvBoolToVis}}"/>
+                            <ItemsControl ItemsSource="{Binding AvailableGames}" Margin="0,0,0,14">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Button Margin="0,0,0,4"
+                                                HorizontalContentAlignment="Left"
+                                                Padding="10,9"
+                                                MinWidth="0" MinHeight="0"
+                                                FontSize="13"
+                                                Command="{Binding DataContext.SwitchGameCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                CommandParameter="{Binding GameId}">
+                                            <Button.Style>
+                                                <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+                                                    <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsActiveGame}" Value="True">
+                                                            <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
+                                                            <Setter Property="BorderThickness" Value="2"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Button.Style>
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Grid.Column="0" FontSize="16" VerticalAlignment="Center">
+                                                    <TextBlock.Style>
+                                                        <Style TargetType="TextBlock">
+                                                            <Setter Property="Text" Value="🔴"/>
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding GameId}" Value="EDF41">
+                                                                    <Setter Property="Text" Value="🔵"/>
+                                                                </DataTrigger>
+                                                                <DataTrigger Binding="{Binding GameId}" Value="EDF5">
+                                                                    <Setter Property="Text" Value="🟢"/>
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </TextBlock.Style>
+                                                </TextBlock>
+                                                <StackPanel Grid.Column="1" Margin="8,0,0,0"
+                                                            Visibility="{Binding DataContext.IsSidebarCollapsed, Converter={StaticResource InvBoolToVis}, RelativeSource={RelativeSource AncestorType=Window}}">
+                                                    <TextBlock Text="{Binding ShortName}" FontWeight="SemiBold" FontSize="13"/>
+                                                    <TextBlock FontSize="10">
+                                                        <TextBlock.Style>
+                                                            <Style TargetType="TextBlock">
+                                                                <Setter Property="Text" Value="⚙️ Setup needed"/>
+                                                                <Setter Property="Foreground" Value="{DynamicResource TextMutedBrush}"/>
+                                                                <Style.Triggers>
+                                                                    <MultiDataTrigger>
+                                                                        <MultiDataTrigger.Conditions>
+                                                                            <Condition Binding="{Binding IsConfigured}" Value="True"/>
+                                                                            <Condition Binding="{Binding IsActiveGame}" Value="True"/>
+                                                                        </MultiDataTrigger.Conditions>
+                                                                        <Setter Property="Text" Value="✅ Active"/>
+                                                                        <Setter Property="Foreground" Value="{DynamicResource AccentBrush}"/>
+                                                                    </MultiDataTrigger>
+                                                                    <MultiDataTrigger>
+                                                                        <MultiDataTrigger.Conditions>
+                                                                            <Condition Binding="{Binding IsConfigured}" Value="True"/>
+                                                                            <Condition Binding="{Binding IsActiveGame}" Value="False"/>
+                                                                        </MultiDataTrigger.Conditions>
+                                                                        <Setter Property="Text" Value="Ready"/>
+                                                                        <Setter Property="Foreground" Value="{DynamicResource TextMutedBrush}"/>
+                                                                    </MultiDataTrigger>
+                                                                </Style.Triggers>
+                                                            </Style>
+                                                        </TextBlock.Style>
+                                                    </TextBlock>
+                                                </StackPanel>
+                                            </Grid>
+                                        </Button>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+
+                            <!-- STATS section (hidden when collapsed) -->
+                            <StackPanel Visibility="{Binding IsSidebarCollapsed, Converter={StaticResource InvBoolToVis}}">
+                                <TextBlock Text="STATS" Style="{StaticResource KickerText}" Margin="4,0,0,6"/>
+                                <UniformGrid Columns="2" Margin="0,0,0,14">
+                                    <Border Style="{StaticResource CompactCard}" Margin="0,0,4,4">
+                                        <StackPanel>
+                                            <TextBlock Text="🧩 Total" Style="{StaticResource KickerText}"/>
+                                            <TextBlock Text="{Binding TotalModCount}" FontSize="22" FontWeight="SemiBold"
+                                                       Foreground="{DynamicResource TextPrimaryBrush}"/>
+                                        </StackPanel>
+                                    </Border>
+                                    <Border Style="{StaticResource CompactCard}" Margin="4,0,0,4">
+                                        <StackPanel>
+                                            <TextBlock Text="✅ Active" Style="{StaticResource KickerText}"/>
+                                            <TextBlock Text="{Binding ActiveModCount}" FontSize="22" FontWeight="SemiBold"
+                                                       Foreground="{DynamicResource SuccessBrush}"/>
+                                        </StackPanel>
+                                    </Border>
+                                    <Border Style="{StaticResource CompactCard}" Margin="0,0,4,0">
+                                        <StackPanel>
+                                            <TextBlock Text="⚠️ Conflicts" Style="{StaticResource KickerText}"/>
+                                            <TextBlock Text="{Binding ConflictModCount}" FontSize="22" FontWeight="SemiBold"
+                                                       Foreground="{DynamicResource WarningBrush}"/>
+                                        </StackPanel>
+                                    </Border>
+                                    <Border Style="{StaticResource CompactCard}" Margin="4,0,0,0">
+                                        <StackPanel>
+                                            <TextBlock Text="🔥 Risk" Style="{StaticResource KickerText}"/>
+                                            <TextBlock Text="{Binding HighRiskModCount}" FontSize="22" FontWeight="SemiBold"
+                                                       Foreground="{DynamicResource DangerBrush}"/>
+                                        </StackPanel>
+                                    </Border>
+                                </UniformGrid>
+                            </StackPanel>
+
+                            <!-- DEPLOY section -->
+                            <TextBlock Text="DEPLOY" Style="{StaticResource KickerText}" Margin="4,0,0,6"
+                                       Visibility="{Binding IsSidebarCollapsed, Converter={StaticResource InvBoolToVis}}"/>
+
+                            <Button Style="{StaticResource DeployPrimaryButton}"
+                                    Margin="0,0,0,6"
+                                    Command="{Binding ApplyModsCommand}"
+                                    IsEnabled="{Binding CanApplyMods}"
+                                    ToolTip="Apply current mods (Ctrl+Shift+A)">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="🚀" FontSize="16" VerticalAlignment="Center"/>
+                                    <TextBlock Text=" Apply Mods"
+                                               VerticalAlignment="Center"
+                                               Visibility="{Binding IsSidebarCollapsed, Converter={StaticResource InvBoolToVis}}"/>
+                                </StackPanel>
+                            </Button>
+
+                            <Button Style="{StaticResource DeploySecondaryButton}"
+                                    Margin="0,0,0,6"
+                                    Command="{Binding ApplyAndLaunchCommand}"
+                                    IsEnabled="{Binding CanApplyAndLaunch}"
+                                    ToolTip="Apply mods and launch the active game (Ctrl+Alt+A)">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="🕹️" FontSize="16" VerticalAlignment="Center"/>
+                                    <TextBlock Text=" Apply + Launch"
+                                               VerticalAlignment="Center"
+                                               Visibility="{Binding IsSidebarCollapsed, Converter={StaticResource InvBoolToVis}}"/>
+                                </StackPanel>
+                            </Button>
+
+                            <Button Style="{StaticResource DeploySecondaryButton}"
+                                    Margin="0,0,0,10"
+                                    Command="{Binding LaunchGameCommand}"
+                                    IsEnabled="{Binding CanLaunchGame}"
+                                    ToolTip="Launch the active game (Ctrl+Shift+L)">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="🎮" FontSize="16" VerticalAlignment="Center"/>
+                                    <TextBlock Text=" Launch Game"
+                                               VerticalAlignment="Center"
+                                               Visibility="{Binding IsSidebarCollapsed, Converter={StaticResource InvBoolToVis}}"/>
+                                </StackPanel>
+                            </Button>
+
+                            <!-- Busy indicator -->
+                            <DockPanel Margin="4,0,4,0"
+                                       Visibility="{Binding IsBusy, Converter={StaticResource BoolToVis}}">
+                                <ui:ProgressRing DockPanel.Dock="Left"
+                                                 IsActive="{Binding IsBusy}"
+                                                 Width="18" Height="18"
+                                                 Margin="0,0,8,0"
+                                                 VerticalAlignment="Center"/>
+                                <TextBlock Text="{Binding StatusText}"
+                                           Style="{StaticResource MutedText}"
+                                           TextWrapping="Wrap"
+                                           VerticalAlignment="Center"
+                                           Visibility="{Binding IsSidebarCollapsed, Converter={StaticResource InvBoolToVis}}"/>
+                            </DockPanel>
+
+                        </StackPanel>
+                    </ScrollViewer>
+                </DockPanel>
+            </Grid>
+        </Border>
+
+        <!-- ══════════════════════════════════ -->
+        <!--  MAIN CONTENT                      -->
+        <!-- ══════════════════════════════════ -->
+        <Grid Grid.Column="1">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>  <!-- Filter + toolbar bar -->
+                <RowDefinition Height="Auto"/>  <!-- Batch import progress -->
+                <RowDefinition Height="*"/>     <!-- Mod DataGrid -->
+                <RowDefinition Height="Auto"/>  <!-- Recent imports drawer -->
+                <RowDefinition Height="Auto"/>  <!-- Conflict radar drawer -->
+                <RowDefinition Height="Auto"/>  <!-- Toast panel -->
+                <RowDefinition Height="Auto"/>  <!-- Status bar -->
+            </Grid.RowDefinitions>
+
+            <!-- ── Filter + Toolbar Bar ── -->
+            <Border Grid.Row="0"
+                    Margin="12,12,12,8"
+                    Padding="10,8"
+                    CornerRadius="10"
+                    Background="{DynamicResource SurfaceBrush}"
+                    BorderBrush="{DynamicResource SurfaceBorderBrush}"
+                    BorderThickness="1">
+                <DockPanel>
+                    <!-- Toolbar buttons right side -->
+                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Margin="8,0,0,0">
+                        <Button Content="🔄"
+                                Style="{StaticResource InlineSmallButton}"
+                                Margin="0,0,4,0"
+                                Command="{Binding RefreshCommand}"
+                                ToolTip="Refresh (F5)"/>
+                        <Button Content="📥 Import ▾"
+                                Style="{StaticResource InlineSmallButton}"
+                                Margin="0,0,4,0"
+                                Click="ToolbarMenuButton_Click">
+                            <Button.ContextMenu>
+                                <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
+                                    <MenuItem Header="📦 Zip Archive..." Command="{Binding ImportZipCommand}" InputGestureText="Ctrl+Shift+I"/>
+                                    <MenuItem Header="📁 Folder..."      Command="{Binding ImportFolderCommand}" InputGestureText="Ctrl+Shift+O"/>
+                                </ContextMenu>
+                            </Button.ContextMenu>
+                        </Button>
+                        <Button Content="🧰 Manage ▾"
+                                Style="{StaticResource InlineSmallButton}"
+                                Margin="0,0,4,0"
+                                Click="ToolbarMenuButton_Click">
+                            <Button.ContextMenu>
+                                <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
+                                    <MenuItem Header="✅ Enable All"       Command="{Binding EnableAllCommand}"/>
+                                    <MenuItem Header="⛔ Disable All"      Command="{Binding DisableAllCommand}"/>
+                                    <Separator/>
+                                    <MenuItem Header="🔤 Sort by Name"     Command="{Binding SortByNameCommand}"/>
+                                    <MenuItem Header="↩️ Undo Last Change" Command="{Binding UndoCommand}" IsEnabled="{Binding CanUndo}"/>
+                                    <Separator/>
+                                    <MenuItem Header="🛟 Restore Last Apply" Command="{Binding RestoreLastApplyBackupCommand}" IsEnabled="{Binding CanRestoreLastApply}"/>
+                                </ContextMenu>
+                            </Button.ContextMenu>
+                        </Button>
+                        <Button Content="🗂️ View ▾"
+                                Style="{StaticResource InlineSmallButton}"
+                                Margin="0,0,4,0"
+                                Click="ToolbarMenuButton_Click">
+                            <Button.ContextMenu>
+                                <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
+                                    <MenuItem Header="⬆️ Load Order View" Command="{Binding ShowLoadOrderViewCommand}"/>
+                                    <MenuItem Header="📋 All Mods View"   Command="{Binding ShowAllModsViewCommand}"/>
+                                    <MenuItem Header="📂 Group View"      Command="{Binding ToggleGroupViewCommand}"/>
+                                </ContextMenu>
+                            </Button.ContextMenu>
+                        </Button>
+                        <Button x:Name="LoadoutButton"
+                                Content="📚 Loadout ▾"
+                                Style="{StaticResource InlineSmallButton}"
+                                Click="LoadoutButton_Click"/>
+                    </StackPanel>
+
+                    <!-- Filter chips + search (left side) -->
+                    <StackPanel Orientation="Horizontal">
+                        <TextBox Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
+                                 Width="200"
+                                 VerticalContentAlignment="Center"
+                                 ToolTip="Search mods, folders, groups, warnings"
+                                 Margin="0,0,8,0"/>
+                        <CheckBox Content="✅ Active"
+                                  IsChecked="{Binding ShowActiveOnly, Mode=TwoWay}"
+                                  VerticalAlignment="Center"
+                                  Margin="0,0,8,0"/>
+                        <CheckBox Content="⚠️ Conflicts"
+                                  IsChecked="{Binding ShowConflictsOnly, Mode=TwoWay}"
+                                  VerticalAlignment="Center"
+                                  Margin="0,0,8,0"/>
+                        <CheckBox Content="🔥 Risk"
+                                  IsChecked="{Binding ShowRiskyOnly, Mode=TwoWay}"
+                                  VerticalAlignment="Center"
+                                  Margin="0,0,8,0"/>
+                        <Button Content="🧹"
+                                Style="{StaticResource InlineSmallButton}"
+                                Command="{Binding ClearFiltersCommand}"
+                                ToolTip="Clear all filters"/>
+                    </StackPanel>
+                </DockPanel>
+            </Border>
+
+            <!-- Loadout Popup -->
+            <Popup x:Name="LoadoutPopup"
+                   PlacementTarget="{Binding ElementName=LoadoutButton}"
+                   Placement="Bottom"
+                   StaysOpen="False"
+                   AllowsTransparency="True">
+                <Border Margin="4"
+                        Padding="14"
+                        CornerRadius="10"
+                        Background="{DynamicResource SurfaceBrush}"
+                        BorderBrush="{DynamicResource AccentBrush}"
+                        BorderThickness="1">
+                    <Border.Effect>
+                        <DropShadowEffect Color="#000000" BlurRadius="20" ShadowDepth="4" Opacity="0.4"/>
+                    </Border.Effect>
+                    <StackPanel Width="300">
+                        <DockPanel Margin="0,0,0,10">
+                            <TextBlock Text="📚 Loadout" Style="{StaticResource SectionTitleText}"/>
+                            <TextBlock DockPanel.Dock="Right"
+                                       Style="{StaticResource MutedText}"
+                                       VerticalAlignment="Center">
+                                <Run Text="Active: "/>
+                                <Run Text="{Binding ActivePresetDisplayName, Mode=OneWay}"/>
+                            </TextBlock>
+                        </DockPanel>
+                        <TextBlock Text="✏️ Modified"
+                                   Style="{StaticResource MutedText}"
+                                   Foreground="{DynamicResource WarningBrush}"
+                                   Margin="0,0,0,8"
+                                   Visibility="{Binding IsActivePresetDirty, Converter={StaticResource BoolToVis}}"/>
+                        <Grid Margin="0,0,0,8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="8"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <ComboBox Grid.Column="0"
+                                      ItemsSource="{Binding AvailablePresets}"
+                                      SelectedItem="{Binding SelectedPresetName, Mode=TwoWay}"
+                                      VerticalAlignment="Center"/>
+                            <TextBox Grid.Column="2"
+                                     Text="{Binding PresetNameInput, UpdateSourceTrigger=PropertyChanged}"
+                                     VerticalContentAlignment="Center"
+                                     ToolTip="New preset name"/>
+                        </Grid>
+                        <WrapPanel>
+                            <Button Content="💾 Save"   Command="{Binding SavePresetCommand}"   IsEnabled="{Binding CanSavePreset}"   Style="{StaticResource InlineSmallButton}" Margin="0,0,6,0"/>
+                            <Button Content="📥 Load"   Command="{Binding LoadPresetCommand}"   IsEnabled="{Binding CanLoadPreset}"   Style="{StaticResource InlineSmallButton}" Margin="0,0,6,0"/>
+                            <Button Content="✏️ Rename" Command="{Binding RenamePresetCommand}" IsEnabled="{Binding CanRenamePreset}" Style="{StaticResource InlineSmallButton}" Margin="0,0,6,0"/>
+                            <Button Content="🗑️ Delete" Command="{Binding DeletePresetCommand}" IsEnabled="{Binding CanDeletePreset}" Style="{StaticResource InlineSmallButton}"/>
+                        </WrapPanel>
+                    </StackPanel>
+                </Border>
+            </Popup>
+
+            <!-- ── Batch Import Progress ── -->
+            <Border Grid.Row="1"
+                    Margin="12,0,12,8"
+                    Padding="14"
+                    CornerRadius="10"
+                    Background="{DynamicResource SurfaceBrush}"
+                    BorderBrush="{DynamicResource SurfaceBorderBrush}"
+                    BorderThickness="1"
+                    Visibility="{Binding IsBatchImportActive, Converter={StaticResource BoolToVis}}">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <ui:ProgressRing Grid.Column="0" IsActive="True" Width="24" Height="24"
+                                     Margin="0,0,12,0" VerticalAlignment="Center"/>
+                    <StackPanel Grid.Column="1">
+                        <TextBlock Text="{Binding BatchImportProgressLabel}"
+                                   FontWeight="SemiBold"
+                                   Foreground="{DynamicResource TextPrimaryBrush}"/>
+                        <TextBlock Text="{Binding BatchImportCurrentItemLabel}"
+                                   Style="{StaticResource MutedText}"
+                                   TextWrapping="Wrap"/>
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <!-- ── Mod DataGrid ── -->
+            <DataGrid x:Name="ModsDataGrid"
+                      Grid.Row="2"
+                      ItemsSource="{Binding Mods}"
+                      SelectedItem="{Binding SelectedMod, Mode=TwoWay}"
+                      AutoGenerateColumns="False"
+                      CanUserAddRows="False"
+                      CanUserDeleteRows="False"
+                      IsReadOnly="False"
+                      SelectionMode="Single"
+                      HeadersVisibility="Column"
+                      GridLinesVisibility="Horizontal"
+                      Margin="12,0,12,0"
+                      VerticalScrollBarVisibility="Auto"
+                      AllowDrop="True"
+                      RowStyle="{StaticResource ModGridRowStyle}"
+                      CellStyle="{StaticResource ModGridCellStyle}"
+                      Background="{DynamicResource AppBgBrush}"
+                      PreviewMouseLeftButtonDown="DataGrid_PreviewMouseLeftButtonDown"
+                      PreviewMouseMove="DataGrid_PreviewMouseMove"
+                      DragOver="DataGrid_DragOver"
+                      Drop="DataGrid_Drop">
+
+                <DataGrid.GroupStyle>
+                    <GroupStyle>
+                        <GroupStyle.ContainerStyle>
+                            <Style TargetType="GroupItem">
+                                <Setter Property="Template">
+                                    <Setter.Value>
+                                        <ControlTemplate TargetType="GroupItem">
+                                            <Expander IsExpanded="True"
+                                                      Margin="0,0,0,4"
+                                                      BorderThickness="0,0,0,1"
+                                                      BorderBrush="{DynamicResource SurfaceBorderBrush}">
+                                                <Expander.Header>
+                                                    <StackPanel Orientation="Horizontal">
+                                                        <TextBlock Text="📂 " FontSize="14"/>
+                                                        <TextBlock FontWeight="SemiBold" FontSize="13"
+                                                                   Foreground="{DynamicResource TextPrimaryBrush}"
+                                                                   VerticalAlignment="Center">
+                                                            <TextBlock.Text>
+                                                                <MultiBinding StringFormat="{}{0} ({1} mods)">
+                                                                    <Binding Path="Name"/>
+                                                                    <Binding Path="ItemCount"/>
+                                                                </MultiBinding>
+                                                            </TextBlock.Text>
+                                                        </TextBlock>
+                                                    </StackPanel>
+                                                </Expander.Header>
+                                                <ItemsPresenter/>
+                                            </Expander>
+                                        </ControlTemplate>
+                                    </Setter.Value>
+                                </Setter>
+                            </Style>
+                        </GroupStyle.ContainerStyle>
+                    </GroupStyle>
+                </DataGrid.GroupStyle>
+
+                <DataGrid.Columns>
+                    <!-- Active checkbox -->
+                    <DataGridTemplateColumn Header="✅" Width="46" IsReadOnly="True">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <CheckBox IsChecked="{Binding IsActive, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                          Style="{StaticResource DataGridCheckBoxStyle}"
+                                          Click="ModCheckBox_Click"/>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+
+                    <!-- Load order badge -->
+                    <DataGridTemplateColumn Header="#" Width="54" SortMemberPath="LoadOrder">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <Border CornerRadius="8" Padding="6,3"
+                                        Background="{DynamicResource SurfaceBrush}">
+                                    <TextBlock Text="{Binding LoadOrderDisplay}"
+                                               FontWeight="SemiBold"
+                                               Foreground="{DynamicResource AccentBrush}"
+                                               Style="{StaticResource CenteredCellText}"/>
+                                </Border>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                        <DataGridTemplateColumn.CellEditingTemplate>
+                            <DataTemplate>
+                                <TextBox Text="{Binding LoadOrder, UpdateSourceTrigger=LostFocus}"
+                                         HorizontalAlignment="Stretch"
+                                         VerticalAlignment="Center"
+                                         HorizontalContentAlignment="Center"
+                                         LostFocus="LoadOrderTextBox_LostFocus"
+                                         PreviewTextInput="LoadOrderTextBox_PreviewTextInput"/>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellEditingTemplate>
+                    </DataGridTemplateColumn>
+
+                    <!-- Mod name + description -->
+                    <DataGridTemplateColumn Header="📦 Mod" Width="*" MinWidth="220" SortMemberPath="ModName" IsReadOnly="True">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <StackPanel>
+                                    <TextBlock Text="{Binding ModName}"
+                                               FontWeight="SemiBold"
+                                               Foreground="{DynamicResource TextPrimaryBrush}"
+                                               TextTrimming="CharacterEllipsis"/>
+                                    <TextBlock Text="{Binding Description}"
+                                               Style="{StaticResource MutedText}"
+                                               TextTrimming="CharacterEllipsis"
+                                               Margin="0,2,0,0"/>
+                                </StackPanel>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+
+                    <!-- Group (cyan, editable) -->
+                    <DataGridTemplateColumn Header="📂 Group" Width="120" MinWidth="90" SortMemberPath="Group">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding Group}"
+                                           FontStyle="Italic"
+                                           TextTrimming="CharacterEllipsis"
+                                           VerticalAlignment="Center"
+                                           Foreground="{DynamicResource AccentCyanBrush}"/>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                        <DataGridTemplateColumn.CellEditingTemplate>
+                            <DataTemplate>
+                                <TextBox Text="{Binding Group, UpdateSourceTrigger=Explicit}"
+                                         HorizontalAlignment="Stretch"
+                                         VerticalAlignment="Center"
+                                         LostFocus="GroupTextBox_LostFocus"/>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellEditingTemplate>
+                    </DataGridTemplateColumn>
+
+                    <!-- Subfolders -->
+                    <DataGridTextColumn Header="🗃️ Folders"
+                                        Binding="{Binding Subfolders}"
+                                        Width="150" MinWidth="110"
+                                        IsReadOnly="True">
+                        <DataGridTextColumn.ElementStyle>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="TextTrimming" Value="CharacterEllipsis"/>
+                                <Setter Property="VerticalAlignment" Value="Center"/>
+                                <Setter Property="Foreground" Value="{DynamicResource TextMutedBrush}"/>
+                            </Style>
+                        </DataGridTextColumn.ElementStyle>
+                    </DataGridTextColumn>
+
+                    <!-- Warning indicator -->
+                    <DataGridTemplateColumn Header="⚠️" Width="50" IsReadOnly="True">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <TextBlock HorizontalAlignment="Center" VerticalAlignment="Center"
+                                           Cursor="Hand" FontSize="16">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Text" Value=""/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding HasWarnings}" Value="True">
+                                                    <Setter Property="Text" Value="⚠️"/>
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding CompatibilityStatus}" Value="Mismatch">
+                                                    <Setter Property="Text" Value="⛔"/>
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding IsHighRisk}" Value="True">
+                                                    <Setter Property="Text" Value="🔥"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                    <TextBlock.ToolTip>
+                                        <ToolTip MaxWidth="340">
+                                            <TextBlock Text="{Binding WarningDetails}" TextWrapping="Wrap"/>
+                                        </ToolTip>
+                                    </TextBlock.ToolTip>
+                                </TextBlock>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+
+                    <!-- Status pill -->
+                    <DataGridTemplateColumn Header="🔄 Status" Width="120" MinWidth="100" SortMemberPath="Status">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <Border CornerRadius="8" Padding="8,4">
+                                    <Border.Style>
+                                        <Style TargetType="Border">
+                                            <Setter Property="Background" Value="{DynamicResource SurfaceBrush}"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding Status}" Value="Active">
+                                                    <Setter Property="Background" Value="{DynamicResource AccentBrush}"/>
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding Status}" Value="✅ Wins">
+                                                    <Setter Property="Background" Value="{DynamicResource AccentBrush}"/>
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding Status}" Value="⚠️ Overridden">
+                                                    <Setter Property="Background" Value="{DynamicResource WarningBrush}"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Border.Style>
+                                    <TextBlock Text="{Binding Status}" FontWeight="SemiBold"
+                                               Style="{StaticResource CenteredCellText}">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock" BasedOn="{StaticResource CenteredCellText}">
+                                                <Setter Property="Foreground" Value="{DynamicResource TextMutedBrush}"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding Status}" Value="Active">
+                                                        <Setter Property="Foreground" Value="White"/>
+                                                    </DataTrigger>
+                                                    <DataTrigger Binding="{Binding Status}" Value="✅ Wins">
+                                                        <Setter Property="Foreground" Value="White"/>
+                                                    </DataTrigger>
+                                                    <DataTrigger Binding="{Binding Status}" Value="⚠️ Overridden">
+                                                        <Setter Property="Foreground" Value="White"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                </Border>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+
+                    <!-- Move up/down -->
+                    <DataGridTemplateColumn Header="⬆⬇" Width="76" IsReadOnly="True">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                    <Button Content="⬆️"
+                                            Style="{StaticResource InlineSmallButton}"
+                                            Margin="0,0,4,0"
+                                            ToolTip="Move up"
+                                            Command="{Binding DataContext.MoveUpCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}"
+                                            CommandParameter="{Binding}"/>
+                                    <Button Content="⬇️"
+                                            Style="{StaticResource InlineSmallButton}"
+                                            ToolTip="Move down"
+                                            Command="{Binding DataContext.MoveDownCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}"
+                                            CommandParameter="{Binding}"/>
+                                </StackPanel>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+
+                    <!-- Info tooltip -->
+                    <DataGridTemplateColumn Header="ℹ️" Width="44" IsReadOnly="True">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="ℹ️"
+                                           HorizontalAlignment="Center" VerticalAlignment="Center"
+                                           Cursor="Hand" FontSize="15">
+                                    <TextBlock.ToolTip>
+                                        <ToolTip MaxWidth="360">
+                                            <StackPanel>
+                                                <TextBlock Text="{Binding ModName}" FontWeight="Bold" Margin="0,0,0,4"
+                                                           Foreground="{DynamicResource TextPrimaryBrush}"/>
+                                                <TextBlock Text="{Binding Description}" TextWrapping="Wrap"
+                                                           Foreground="{DynamicResource TextPrimaryBrush}"/>
+                                                <TextBlock Margin="0,8,0,0" FontSize="11" FontWeight="SemiBold"
+                                                           Foreground="{DynamicResource TextPrimaryBrush}">
+                                                    <Run Text="Compatibility: "/>
+                                                    <Run Text="{Binding CompatibilityStatus, Mode=OneWay}"/>
+                                                </TextBlock>
+                                                <TextBlock FontSize="11" Foreground="{DynamicResource TextPrimaryBrush}">
+                                                    <Run Text="Risk: "/><Run Text="{Binding RiskLevel, Mode=OneWay}"/>
+                                                </TextBlock>
+                                                <TextBlock Margin="0,4,0,0" FontSize="11" TextWrapping="Wrap"
+                                                           Foreground="{DynamicResource TextMutedBrush}">
+                                                    <Run Text="Warnings: "/><Run Text="{Binding WarningDetails, Mode=OneWay}"/>
+                                                </TextBlock>
+                                                <TextBlock Margin="0,4,0,0" FontSize="11"
+                                                           Foreground="{DynamicResource TextMutedBrush}">
+                                                    <Run Text="Subfolders: "/><Run Text="{Binding Subfolders, Mode=OneWay}"/>
+                                                </TextBlock>
+                                                <TextBlock FontSize="11" Foreground="{DynamicResource TextMutedBrush}">
+                                                    <Run Text="Date: "/><Run Text="{Binding DateAdded, StringFormat=yyyy-MM-dd, Mode=OneWay}"/>
+                                                </TextBlock>
+                                            </StackPanel>
+                                        </ToolTip>
+                                    </TextBlock.ToolTip>
+                                </TextBlock>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+                </DataGrid.Columns>
+            </DataGrid>
+
+            <!-- ── Recent Imports Drawer ── -->
+            <Border Grid.Row="3"
+                    Margin="12,8,12,0"
+                    CornerRadius="10"
+                    Background="{DynamicResource SurfaceBrush}"
+                    BorderBrush="{DynamicResource SurfaceBorderBrush}"
+                    BorderThickness="1"
+                    Visibility="{Binding HasRecentImports, Converter={StaticResource BoolToVis}}">
+                <StackPanel>
+                    <!-- Drawer header / toggle -->
+                    <Border x:Name="RecentImportsHeader"
+                            Padding="12,10"
+                            Cursor="Hand"
+                            MouseLeftButtonUp="RecentImportsHeader_Click">
+                        <DockPanel>
+                            <TextBlock Text="🕘 Recent Imports"
+                                       Style="{StaticResource SectionTitleText}"/>
+                            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                                <Button Content="🧹 Clear"
+                                        Style="{StaticResource InlineSmallButton}"
+                                        Margin="0,0,8,0"
+                                        Command="{Binding ClearRecentImportsCommand}"
+                                        IsEnabled="{Binding HasRecentImports}"/>
+                                <TextBlock x:Name="RecentImportsChevron"
+                                           Text="▲"
+                                           FontSize="11"
+                                           Foreground="{DynamicResource TextMutedBrush}"
+                                           VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </DockPanel>
+                    </Border>
+
+                    <!-- Drawer content (collapsible) -->
+                    <Border x:Name="RecentImportsContent" Padding="12,0,12,12">
+                        <StackPanel>
+                            <!-- Latest import highlight -->
+                            <Border Style="{StaticResource CompactCard}" Margin="0,0,0,10">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="✨" FontSize="22" Margin="0,0,10,0" VerticalAlignment="Center"/>
+                                    <StackPanel Grid.Column="1">
+                                        <TextBlock FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}">
+                                            <Run Text="Latest: "/>
+                                            <Run Text="{Binding LatestRecentImport.ModName}"/>
+                                        </TextBlock>
+                                        <TextBlock Style="{StaticResource MutedText}" Margin="0,2,0,0">
+                                            <Run Text="{Binding LatestRecentImport.SourceLabel}"/>
+                                            <Run Text=" · "/>
+                                            <Run Text="{Binding LatestRecentImport.ImportedAtLabel}"/>
+                                            <Run Text=" · "/>
+                                            <Run Text="{Binding LatestRecentImport.ImportedFileCount}"/>
+                                            <Run Text=" files"/>
+                                        </TextBlock>
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="2" Orientation="Horizontal" Margin="12,0,0,0" VerticalAlignment="Center">
+                                        <Button Margin="0,0,6,0" Style="{StaticResource InlineSmallButton}"
+                                                Command="{Binding ToggleRecentImportPinCommand}"
+                                                CommandParameter="{Binding LatestRecentImport}">
+                                            <Button.Style>
+                                                <Style TargetType="Button" BasedOn="{StaticResource InlineSmallButton}">
+                                                    <Setter Property="Content" Value="📌 Pin"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding LatestRecentImport.IsPinned}" Value="True">
+                                                            <Setter Property="Content" Value="📍 Unpin"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Button.Style>
+                                        </Button>
+                                        <Button Content="🎯 Jump" Margin="0,0,6,0"
+                                                Style="{StaticResource InlineSmallButton}"
+                                                Tag="RecentImportPrimaryAction"
+                                                PreviewKeyDown="RecentImportCardPrimaryAction_PreviewKeyDown"
+                                                Command="{Binding SelectRecentImportCommand}"
+                                                CommandParameter="{Binding LatestRecentImport}"/>
+                                        <Button Content="📁 Open"
+                                                Style="{StaticResource InlineSmallButton}"
+                                                Command="{Binding OpenRecentImportFolderCommand}"
+                                                CommandParameter="{Binding LatestRecentImport}"/>
+                                    </StackPanel>
+                                </Grid>
+                            </Border>
+
+                            <!-- Pinned imports -->
+                            <StackPanel Visibility="{Binding HasPinnedRecentImports, Converter={StaticResource BoolToVis}}">
+                                <TextBlock Text="{Binding PinnedRecentImportsHeader}"
+                                           Style="{StaticResource KickerText}" Margin="0,0,0,6"/>
+                                <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
+                                    <ItemsControl ItemsSource="{Binding PinnedRecentImports}"
+                                                  ItemTemplate="{StaticResource RecentImportCardTemplate}">
+                                        <ItemsControl.ItemsPanel>
+                                            <ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate>
+                                        </ItemsControl.ItemsPanel>
+                                    </ItemsControl>
+                                </ScrollViewer>
+                            </StackPanel>
+
+                            <!-- Unpinned imports -->
+                            <StackPanel Visibility="{Binding HasUnpinnedRecentImports, Converter={StaticResource BoolToVis}}">
+                                <TextBlock Text="{Binding RecentImportsHeader}"
+                                           Style="{StaticResource KickerText}" Margin="0,4,0,6"/>
+                                <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
+                                    <ItemsControl ItemsSource="{Binding RecentImports}"
+                                                  ItemTemplate="{StaticResource RecentImportCardTemplate}">
+                                        <ItemsControl.ItemsPanel>
+                                            <ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate>
+                                        </ItemsControl.ItemsPanel>
+                                    </ItemsControl>
+                                </ScrollViewer>
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </Border>
+
+            <!-- ── Conflict Radar Drawer ── -->
+            <Border Grid.Row="4"
+                    Margin="12,8,12,0"
+                    CornerRadius="10"
+                    Background="{DynamicResource SurfaceBrush}"
+                    BorderBrush="{DynamicResource WarningBrush}"
+                    BorderThickness="1"
+                    Visibility="{Binding IsConflictPanelVisible, Converter={StaticResource BoolToVis}}">
+                <StackPanel>
+                    <Border Padding="12,10" Cursor="Hand" MouseLeftButtonUp="ConflictRadarHeader_Click">
+                        <DockPanel>
+                            <TextBlock Text="⚠️ Conflict Radar" Style="{StaticResource SectionTitleText}"/>
+                            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                                <Button Content="✕ Hide"
+                                        Style="{StaticResource InlineSmallButton}"
+                                        Margin="0,0,8,0"
+                                        Command="{Binding HideConflictPanelCommand}"/>
+                                <TextBlock x:Name="ConflictRadarChevron"
+                                           Text="▲" FontSize="11"
+                                           Foreground="{DynamicResource TextMutedBrush}"
+                                           VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </DockPanel>
+                    </Border>
+
+                    <Border x:Name="ConflictRadarContent" Padding="12,0,12,12">
+                        <StackPanel>
+                            <ItemsControl ItemsSource="{Binding ConflictReport}" MaxHeight="190">
+                                <ItemsControl.Template>
+                                    <ControlTemplate TargetType="ItemsControl">
+                                        <ScrollViewer VerticalScrollBarVisibility="Auto" MaxHeight="190">
+                                            <ItemsPresenter/>
+                                        </ScrollViewer>
+                                    </ControlTemplate>
+                                </ItemsControl.Template>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border Style="{StaticResource CompactCard}" Margin="0,0,0,8">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                </Grid.ColumnDefinitions>
+                                                <StackPanel Grid.Column="0">
+                                                    <TextBlock FontSize="12" FontWeight="SemiBold" TextWrapping="Wrap"
+                                                               Foreground="{DynamicResource TextPrimaryBrush}">
+                                                        <Run Text="📄 "/>
+                                                        <Run Text="{Binding RelativePath, Mode=OneWay}"/>
+                                                    </TextBlock>
+                                                    <TextBlock Margin="0,4,0,0" FontSize="11" TextWrapping="Wrap"
+                                                               Foreground="{DynamicResource TextPrimaryBrush}">
+                                                        <Run Text="🏆 Winner: "/>
+                                                        <Run Text="{Binding WinnerModName, Mode=OneWay}" FontWeight="SemiBold"/>
+                                                        <Run Text=" (#"/><Run Text="{Binding WinnerLoadOrder, Mode=OneWay}"/><Run Text=")"/>
+                                                    </TextBlock>
+                                                    <TextBlock FontSize="11" TextWrapping="Wrap"
+                                                               Foreground="{DynamicResource TextMutedBrush}">
+                                                        <Run Text="🧯 Loser: "/>
+                                                        <Run Text="{Binding LoserModName, Mode=OneWay}" FontWeight="SemiBold"/>
+                                                        <Run Text=" (#"/><Run Text="{Binding LoserLoadOrder, Mode=OneWay}"/><Run Text=")"/>
+                                                    </TextBlock>
+                                                </StackPanel>
+                                                <StackPanel Grid.Column="1" Margin="12,0,0,0" VerticalAlignment="Center">
+                                                    <Button Content="🎯 Winner" Margin="0,0,0,4" Padding="8,3"
+                                                            Style="{StaticResource InlineSmallButton}"
+                                                            Command="{Binding DataContext.SelectConflictWinnerCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                            CommandParameter="{Binding}"/>
+                                                    <Button Content="🎯 Loser" Margin="0,0,0,4" Padding="8,3"
+                                                            Style="{StaticResource InlineSmallButton}"
+                                                            Command="{Binding DataContext.SelectConflictLoserCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                            CommandParameter="{Binding}"/>
+                                                    <Button Content="🏆 Make Win" Padding="8,3"
+                                                            Style="{StaticResource InlineSmallButton}"
+                                                            Command="{Binding DataContext.MakeLoserWinCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                            CommandParameter="{Binding}"/>
+                                                    <Button Content="⬇️ Lower Win" Margin="0,4,0,0" Padding="8,3"
+                                                            Style="{StaticResource InlineSmallButton}"
+                                                            Command="{Binding DataContext.MoveWinnerDownCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                            CommandParameter="{Binding}"/>
+                                                </StackPanel>
+                                            </Grid>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <TextBlock Margin="0,6,0,0"
+                                       Style="{StaticResource MutedText}"
+                                       Text="💡 Higher load order wins file conflicts. Use the action buttons, then apply when ready."/>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </Border>
+
+            <!-- ── Toast Panel ── -->
+            <StackPanel x:Name="ToastPanel" Grid.Row="5" Margin="12,8,12,0"/>
+
+            <!-- ── Status Bar ── -->
+            <Border Grid.Row="6"
+                    Margin="0,8,0,0"
+                    Padding="14,8"
+                    Background="{DynamicResource StatusBarBgBrush}"
+                    BorderBrush="{DynamicResource SurfaceBorderBrush}"
+                    BorderThickness="0,1,0,0">
+                <DockPanel>
+                    <ui:ProgressRing DockPanel.Dock="Right"
+                                     IsActive="{Binding IsBusy}"
+                                     Width="18" Height="18"
+                                     Margin="8,0,0,0"
+                                     VerticalAlignment="Center"
+                                     Visibility="{Binding IsBusy, Converter={StaticResource BoolToVis}}"/>
+                    <TextBlock Text="🛰️" Margin="0,0,8,0" VerticalAlignment="Center"
+                               Foreground="{DynamicResource TextMutedBrush}"/>
+                    <TextBlock Text="{Binding StatusText}"
+                               FontSize="12"
+                               Foreground="{DynamicResource TextMutedBrush}"
+                               TextTrimming="CharacterEllipsis"
+                               VerticalAlignment="Center"/>
+                </DockPanel>
+            </Border>
+        </Grid>
+
+        <!-- ══════════════════════════════════ -->
+        <!--  DROP OVERLAY (spans both cols)    -->
+        <!-- ══════════════════════════════════ -->
+        <Grid x:Name="DropOverlay"
+              Grid.ColumnSpan="2"
+              Panel.ZIndex="100"
+              Visibility="Collapsed"
+              IsHitTestVisible="False">
+            <Border Margin="24"
+                    CornerRadius="18"
+                    BorderThickness="3"
+                    BorderBrush="{DynamicResource AccentBrush}"
+                    Background="{DynamicResource SurfaceBrush}"
+                    Opacity="0.97">
+                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" MaxWidth="460">
+                    <TextBlock Text="📥" FontSize="46" HorizontalAlignment="Center" Margin="0,0,0,10"/>
+                    <TextBlock x:Name="DropOverlayTitle"
+                               Text="Release to import"
+                               FontSize="26" FontWeight="SemiBold"
+                               Foreground="{DynamicResource TextPrimaryBrush}"
+                               TextAlignment="Center"/>
+                    <TextBlock x:Name="DropOverlayText"
+                               Margin="0,10,0,0"
+                               FontSize="13"
+                               Foreground="{DynamicResource TextMutedBrush}"
+                               TextAlignment="Center"
+                               TextWrapping="Wrap"
+                               Text="Your import will be previewed before it joins the library."/>
+                </StackPanel>
+            </Border>
+        </Grid>
+    </Grid>
+</Window>
+```
+
+- [ ] **Step 2: Build**
+
+Run: `dotnet build`
+Expected: Build succeeded, 0 errors (XAML parse errors would surface here)
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add MainWindow.xaml
+git commit -m "feat: rewrite MainWindow with sci-fi sidebar layout"
+```
+
+---
+
+## Task 7: MainWindow.xaml.cs — Animation, Loadout Popup, Init
+
+**Files:**
+- Modify: `MainWindow.xaml.cs`
+
+- [ ] **Step 1: Add using directives**
+
+At the top of `MainWindow.xaml.cs`, ensure these are present (add if missing):
+
+```csharp
+using System.Windows.Media.Animation;
+```
+
+- [ ] **Step 2: Add sidebar animation method and click handler**
+
+Add the following two methods inside the `MainWindow` class:
+
+```csharp
+        private void ToggleSidebar_Click(object sender, RoutedEventArgs e)
+        {
+            var target = _viewModel.IsSidebarCollapsed ? 260.0 : 56.0;
+            _viewModel.ToggleSidebarCommand.Execute(null);
+
+            var anim = new DoubleAnimation(target, TimeSpan.FromMilliseconds(200))
+            {
+                EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+            };
+            SidebarBorder.BeginAnimation(WidthProperty, anim);
+        }
+
+        private void LoadoutButton_Click(object sender, RoutedEventArgs e)
+        {
+            LoadoutPopup.IsOpen = !LoadoutPopup.IsOpen;
+        }
+```
+
+- [ ] **Step 3: Add drawer toggle handlers**
+
+Add these two methods for the Recent Imports and Conflict Radar drawers:
+
+```csharp
+        private void RecentImportsHeader_Click(object sender, System.Windows.Input.MouseButtonEventArgs e)
+        {
+            var isVisible = RecentImportsContent.Visibility == Visibility.Visible;
+            RecentImportsContent.Visibility = isVisible ? Visibility.Collapsed : Visibility.Visible;
+            RecentImportsChevron.Text = isVisible ? "▼" : "▲";
+        }
+
+        private void ConflictRadarHeader_Click(object sender, System.Windows.Input.MouseButtonEventArgs e)
+        {
+            var isVisible = ConflictRadarContent.Visibility == Visibility.Visible;
+            ConflictRadarContent.Visibility = isVisible ? Visibility.Collapsed : Visibility.Visible;
+            ConflictRadarChevron.Text = isVisible ? "▼" : "▲";
+        }
+```
+
+- [ ] **Step 4: Wire sidebar + theme init inside `InitializeAsync`**
+
+Inside `InitializeAsync`, after `await _viewModel.InitializeAsync();`, add:
+
+```csharp
+            _viewModel.InitializeSidebarAndTheme();
+            if (_viewModel.IsSidebarCollapsed)
+                SidebarBorder.Width = 56;
+```
+
+`InitializeSidebarAndTheme()` reads from `_viewModel._settings` which is already populated by `InitializeAsync()`.
+
+- [ ] **Step 5: Build**
+
+Run: `dotnet build`
+Expected: Build succeeded, 0 errors
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add MainWindow.xaml.cs
+git commit -m "feat: wire sidebar animation, drawer toggles, and init in MainWindow code-behind"
+```
+
+---
+
+## Task 8: Remove Per-Game Accent Color Calls
+
+**Files:**
+- Search and modify: any file calling `ThemeHelper.ApplyAccentColor`
+
+- [ ] **Step 1: Find all call sites**
+
+Run: `grep -r "ApplyAccentColor" --include="*.cs" .`
+
+Expected: one or two results in `MainViewModel.cs` or a message handler that fires on `GameSwitchedMessage`.
+
+- [ ] **Step 2: Remove each call**
+
+Delete the line(s) calling `ThemeHelper.ApplyAccentColor(...)`. The unified theme handles colors now.
+
+- [ ] **Step 3: Remove the `ApplyAccentColor` method from `ThemeHelper.cs`**
+
+The rewritten `ThemeHelper.cs` in Task 3 already omits this method, so this step is a verification — confirm there are no remaining references.
+
+Run: `dotnet build`
+Expected: Build succeeded, 0 errors
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add -A
+git commit -m "chore: remove per-game accent color calls — unified palette now handles all colors"
+```
+
+---
+
+## Task 9: Smoke Test + Final Polish
+
+No test project exists, so verify manually by running the application.
+
+- [ ] **Step 1: Run the application**
+
+Run: `dotnet run`
+
+Check each item:
+- [ ] App launches in dark mode (or system mode if Windows is in light mode)
+- [ ] Sidebar is visible at 260px with all sections: branding, game switcher, stats, deploy buttons, bottom controls
+- [ ] Clicking `◀ Collapse` animates the sidebar to 56px; labels disappear, icons remain
+- [ ] Clicking `▶` expands sidebar back to 260px
+- [ ] 🚀 Apply Mods button has a purple glow shadow
+- [ ] Game switcher shows 🔵/🟢/🔴 dots; active game has purple border
+- [ ] Theme toggle cycles 🌙 Dark → ☀️ Light → 🖥️ Auto with correct palette switch
+- [ ] Light mode: white cards, deep indigo text, sky blue accent
+- [ ] Mod DataGrid shows: active rows with green-tinted bg, high-risk rows with red tint
+- [ ] Status pills: Active=purple filled, Overridden=amber, Inactive=muted
+- [ ] Group column text is cyan
+- [ ] Load order badge is purple accent colored
+- [ ] 📚 Loadout ▾ button opens the Loadout popup with ComboBox, TextBox, and action buttons
+- [ ] ⚠️ Conflict Radar drawer header click collapses/expands content
+- [ ] 🕘 Recent Imports drawer header click collapses/expands content
+- [ ] Drag-and-drop file onto window shows the DropOverlay spanning full window width
+- [ ] Status bar at bottom shows 🛰️ + status text
+- [ ] Closing and reopening the app preserves sidebar collapsed/expanded state and theme choice
+
+- [ ] **Step 2: Fix any visual issues found during smoke test**
+
+Common issues to watch for:
+- XAML binding errors in Output window (usually a missing property name — fix the binding)
+- Sidebar width not animating (check `SidebarBorder` x:Name matches code-behind reference)
+- Colors not applying (check `DynamicResource` key names match exactly what's in `DarkTheme.xaml`)
+
+- [ ] **Step 3: Final commit**
+
+```bash
+git add -A
+git commit -m "feat: sci-fi command center UI redesign complete — dark/light theme, collapsible sidebar, glow palette"
+```
