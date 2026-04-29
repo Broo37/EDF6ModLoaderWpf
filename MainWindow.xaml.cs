@@ -6,6 +6,7 @@ using System.Windows.Controls;
 using System.Windows.Data;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
 using EDF6ModLoaderWpf.Helpers;
 using EDF6ModLoaderWpf.Models;
 using EDF6ModLoaderWpf.Services;
@@ -62,6 +63,9 @@ namespace EDF6ModLoaderWpf
             DataContext = _viewModel;
 
             await _viewModel.InitializeAsync();
+            _viewModel.InitializeSidebarAndTheme();
+            if (_viewModel.IsSidebarCollapsed)
+                SidebarBorder.Width = 56;
             ApplyViewState();
             AutoFitColumns();
 
@@ -561,6 +565,38 @@ namespace EDF6ModLoaderWpf
         {
             var trimmedPath = Path.TrimEndingDirectorySeparator(path);
             return Path.GetFileName(trimmedPath);
+        }
+
+        // ── Sidebar / Theme / Drawers ────────────────────────────────
+
+        private void ToggleSidebar_Click(object sender, RoutedEventArgs e)
+        {
+            var targetWidth = _viewModel.IsSidebarCollapsed ? 260.0 : 56.0;
+            _viewModel.ToggleSidebarCommand.Execute(null);
+            var anim = new DoubleAnimation(targetWidth, TimeSpan.FromMilliseconds(200))
+            {
+                EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+            };
+            SidebarBorder.BeginAnimation(WidthProperty, anim);
+        }
+
+        private void LoadoutButton_Click(object sender, RoutedEventArgs e)
+        {
+            LoadoutPopup.IsOpen = !LoadoutPopup.IsOpen;
+        }
+
+        private void RecentImportsHeader_Click(object sender, MouseButtonEventArgs e)
+        {
+            var isVisible = RecentImportsContent.Visibility == Visibility.Visible;
+            RecentImportsContent.Visibility = isVisible ? Visibility.Collapsed : Visibility.Visible;
+            RecentImportsChevron.Text = isVisible ? "▼" : "▲";
+        }
+
+        private void ConflictRadarHeader_Click(object sender, MouseButtonEventArgs e)
+        {
+            var isVisible = ConflictRadarContent.Visibility == Visibility.Visible;
+            ConflictRadarContent.Visibility = isVisible ? Visibility.Collapsed : Visibility.Visible;
+            ConflictRadarChevron.Text = isVisible ? "▼" : "▲";
         }
     }
 }
