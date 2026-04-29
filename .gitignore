@@ -1,12 +1,27 @@
 # Build results
-bin/
-obj/
+[Bb]in/
+[Oo]bj/
+[Oo]ut/
+[Pp]ublish/
+artifacts/
+*.binlog
 
-# User-specific files
+# Test and coverage output
+TestResults/
+coverage/
+*.coverage
+*.coveragexml
+*.trx
+
+# User-specific IDE and assistant files
 *.user
 *.suo
 *.userosscache
 *.sln.docstates
+*.rsuser
+*.DotSettings.user
+*.code-workspace
+.claude/*.local.json
 
 # VS Code
 .vscode/*
@@ -20,7 +35,6 @@ obj/
 
 # Visual Studio
 .vs/
-*.rsuser
 
 # NuGet
 *.nupkg
@@ -28,17 +42,19 @@ obj/
 **/[Pp]ackages/*
 !**/[Pp]ackages/build/
 
+# Local environment and logs
+.env
+.env.*
+*.log
+run_*.txt
+
 # Windows
 Thumbs.db
 ehthumbs.db
 Desktop.ini
 $RECYCLE.BIN/
 
-# Publish output
-publish/
-
 # Misc
-*.log
 *.tmp
 *.bak
 *.swp
