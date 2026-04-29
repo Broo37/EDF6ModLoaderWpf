@@ -3,10 +3,12 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:ui="http://schemas.modernwpf.com/2019"
         Title="⚙️ EDF Mod Manager — Settings"
-        Height="540" Width="600"
+        Height="560" Width="600"
         WindowStartupLocation="CenterOwner"
         ResizeMode="NoResize"
-        ui:WindowHelper.UseModernWindowStyle="True">
+        ui:WindowHelper.UseModernWindowStyle="True"
+        AutomationProperties.AutomationId="SettingsWindow"
+        AutomationProperties.Name="EDF Mod Manager Settings">
 
     <Grid Margin="24">
         <Grid.RowDefinitions>
@@ -30,7 +32,9 @@
         <!-- Tabbed game configs -->
         <TabControl Grid.Row="2"
                     ItemsSource="{Binding GameProfiles}"
-                    SelectedItem="{Binding SelectedProfile}">
+                    SelectedItem="{Binding SelectedProfile}"
+                    AutomationProperties.AutomationId="GameProfilesTabControl"
+                    AutomationProperties.Name="Game Profiles">
             <TabControl.ItemTemplate>
                 <DataTemplate>
                     <StackPanel Orientation="Horizontal">
@@ -72,10 +76,14 @@
                             </Grid.ColumnDefinitions>
                             <TextBox Grid.Column="0"
                                      Text="{Binding GameRootPath, UpdateSourceTrigger=PropertyChanged}"
-                                     VerticalContentAlignment="Center"/>
+                                     VerticalContentAlignment="Center"
+                                     AutomationProperties.AutomationId="GameRootPathTextBox"
+                                     AutomationProperties.Name="Game Directory"/>
                             <Button Grid.Column="1" Content="📁 Browse" Margin="8,0,0,0"
                                     Command="{Binding DataContext.BrowseGameRootCommand,
-                                        RelativeSource={RelativeSource AncestorType=Window}}"/>
+                                        RelativeSource={RelativeSource AncestorType=Window}}"
+                                    AutomationProperties.AutomationId="BrowseGameRootButton"
+                                    AutomationProperties.Name="Browse Game Directory"/>
                         </Grid>
 
                         <!-- Mods Library Directory -->
@@ -88,20 +96,26 @@
                             </Grid.ColumnDefinitions>
                             <TextBox Grid.Column="0"
                                      Text="{Binding ModLibraryPath, UpdateSourceTrigger=PropertyChanged}"
-                                     VerticalContentAlignment="Center"/>
+                                     VerticalContentAlignment="Center"
+                                     AutomationProperties.AutomationId="ModsLibraryPathTextBox"
+                                     AutomationProperties.Name="Mods Library Directory"/>
                             <Button Grid.Column="1" Content="📁 Browse" Margin="8,0,0,0"
                                     Command="{Binding DataContext.BrowseModsLibraryCommand,
-                                        RelativeSource={RelativeSource AncestorType=Window}}"/>
+                                        RelativeSource={RelativeSource AncestorType=Window}}"
+                                    AutomationProperties.AutomationId="BrowseModsLibraryButton"
+                                    AutomationProperties.Name="Browse Mods Library"/>
                         </Grid>
 
                         <StackPanel Margin="0,12,0,0">
                             <Button Content="✨ Auto Detect Common Install"
                                     HorizontalAlignment="Left"
                                     Command="{Binding DataContext.AutoDetectSelectedGameCommand,
-                                        RelativeSource={RelativeSource AncestorType=Window}}"/>
+                                        RelativeSource={RelativeSource AncestorType=Window}}"
+                                    AutomationProperties.AutomationId="AutoDetectGameButton"
+                                    AutomationProperties.Name="Auto Detect Game Install"/>
                             <TextBlock Margin="0,6,0,0"
                                        FontSize="12"
-                                       Foreground="Gray"
+                                       Foreground="{DynamicResource TextMutedBrush}"
                                        TextWrapping="Wrap"
                                        Text="Searches common Steam library folders and suggests a mods library path when one is missing."/>
                         </StackPanel>
@@ -111,11 +125,11 @@
                             <TextBlock.Style>
                                 <Style TargetType="TextBlock">
                                     <Setter Property="Text" Value="⚠️ Not configured"/>
-                                    <Setter Property="Foreground" Value="Orange"/>
+                                    <Setter Property="Foreground" Value="{DynamicResource WarningBrush}"/>
                                     <Style.Triggers>
                                         <DataTrigger Binding="{Binding IsConfigured}" Value="True">
                                             <Setter Property="Text" Value="✅ Configured and ready"/>
-                                            <Setter Property="Foreground" Value="Green"/>
+                                            <Setter Property="Foreground" Value="{DynamicResource SuccessBrush}"/>
                                         </DataTrigger>
                                     </Style.Triggers>
                                 </Style>
@@ -139,7 +153,9 @@
                 <ComboBox Grid.Column="2"
                           ItemsSource="{Binding AvailableFonts}"
                           SelectedItem="{Binding SelectedFontFamily}"
-                          MaxDropDownHeight="300">
+                          MaxDropDownHeight="300"
+                          AutomationProperties.AutomationId="FontFamilyComboBox"
+                          AutomationProperties.Name="Font Family">
                     <ComboBox.ItemTemplate>
                         <DataTemplate>
                             <TextBlock Text="{Binding}" FontFamily="{Binding}" FontSize="13"/>
@@ -151,20 +167,28 @@
 
         <!-- Validation message -->
         <TextBlock Grid.Row="6" Text="{Binding ValidationMessage}"
-                   Foreground="Gray" FontSize="12"/>
+                   Foreground="{DynamicResource TextMutedBrush}"
+                   TextWrapping="Wrap"
+                   FontSize="12"/>
 
         <!-- Error message -->
         <TextBlock Grid.Row="8" Text="{Binding ErrorMessage}"
-                   Foreground="Red" TextWrapping="Wrap" FontSize="12"/>
+                   Foreground="{DynamicResource DangerBrush}" TextWrapping="Wrap" FontSize="12"/>
 
         <!-- Action buttons -->
         <StackPanel Grid.Row="10" Orientation="Horizontal" HorizontalAlignment="Right">
             <Button Content="🗑️ Clear Config" Margin="0,0,8,0"
-                    Command="{Binding ClearGameConfigCommand}"/>
+                    Command="{Binding ClearGameConfigCommand}"
+                    AutomationProperties.AutomationId="ClearConfigButton"
+                    AutomationProperties.Name="Clear Configuration"/>
             <Button Content="Cancel" Width="90" Margin="0,0,8,0" IsCancel="True"
-                    Click="Cancel_Click"/>
+                    Click="Cancel_Click"
+                    AutomationProperties.AutomationId="CancelSettingsButton"
+                    AutomationProperties.Name="Cancel Settings"/>
             <Button Content="💾 Save" Width="120" Style="{StaticResource AccentButtonStyle}"
-                    Command="{Binding SaveCommand}"/>
+                    Command="{Binding SaveCommand}"
+                    AutomationProperties.AutomationId="SaveSettingsButton"
+                    AutomationProperties.Name="Save Settings"/>
         </StackPanel>
     </Grid>
 </Window>

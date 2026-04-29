@@ -16,7 +16,9 @@
         PreviewDragLeave="Window_PreviewDragLeave"
         PreviewDrop="Window_PreviewDrop"
         Background="{DynamicResource AppBgBrush}"
-        ui:WindowHelper.UseModernWindowStyle="True">
+        ui:WindowHelper.UseModernWindowStyle="True"
+        AutomationProperties.AutomationId="MainWindow"
+        AutomationProperties.Name="EDF Mod Manager Main Window">
 
     <Window.InputBindings>
         <KeyBinding Key="F5"              Command="{Binding DataContext.RefreshCommand,              ElementName=RootWindow}"/>
@@ -80,6 +82,12 @@
             <Setter Property="MinHeight" Value="0"/>
             <Setter Property="FontSize" Value="13"/>
             <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsSidebarCollapsed}" Value="True">
+                    <Setter Property="HorizontalContentAlignment" Value="Center"/>
+                    <Setter Property="Padding" Value="4,9"/>
+                </DataTrigger>
+            </Style.Triggers>
         </Style>
 
         <Style x:Key="DeployPrimaryButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
@@ -96,6 +104,12 @@
                     <DropShadowEffect Color="#6C63FF" BlurRadius="14" ShadowDepth="0" Opacity="0.55"/>
                 </Setter.Value>
             </Setter>
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsSidebarCollapsed}" Value="True">
+                    <Setter Property="HorizontalContentAlignment" Value="Center"/>
+                    <Setter Property="Padding" Value="4,10"/>
+                </DataTrigger>
+            </Style.Triggers>
         </Style>
 
         <Style x:Key="DeploySecondaryButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
@@ -105,6 +119,12 @@
             <Setter Property="MinHeight" Value="0"/>
             <Setter Property="FontSize" Value="13"/>
             <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsSidebarCollapsed}" Value="True">
+                    <Setter Property="HorizontalContentAlignment" Value="Center"/>
+                    <Setter Property="Padding" Value="4,9"/>
+                </DataTrigger>
+            </Style.Triggers>
         </Style>
 
         <!-- ── DataGrid styles ── -->
@@ -133,6 +153,19 @@
             <Setter Property="Padding" Value="8,6"/>
             <Setter Property="VerticalContentAlignment" Value="Center"/>
             <Setter Property="BorderThickness" Value="0"/>
+        </Style>
+
+        <Style x:Key="ModGridHeaderStyle" TargetType="DataGridColumnHeader">
+            <Setter Property="Padding" Value="8,6"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Background" Value="{DynamicResource SurfaceBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource SurfaceBorderBrush}"/>
+            <Setter Property="BorderThickness" Value="0,0,1,1"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
+            <Setter Property="HorizontalContentAlignment" Value="Left"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="MinHeight" Value="30"/>
         </Style>
 
         <Style x:Key="CenteredCellText" TargetType="TextBlock">
@@ -212,7 +245,7 @@
         <!-- ══════════════════════════════════ -->
         <Border x:Name="SidebarBorder"
                 Grid.Column="0"
-                Width="260"
+                Width="276"
                 Background="{DynamicResource SidebarBgBrush}">
             <Grid>
                 <!-- Left accent stripe -->
@@ -222,62 +255,27 @@
                 <!-- Sidebar content offset past the stripe -->
                 <DockPanel Margin="3,0,0,0">
 
-                    <!-- ── Bottom controls (docked first so ScrollViewer fills middle) ── -->
-                    <StackPanel DockPanel.Dock="Bottom" Margin="8,0,8,12">
-                        <Separator Margin="0,0,0,8" Background="{DynamicResource SurfaceBorderBrush}"/>
-
-                        <!-- Settings -->
-                        <Button Style="{StaticResource SidebarButtonStyle}"
-                                Command="{Binding OpenSettingsCommand}"
-                                Margin="0,0,0,2" ToolTip="Open settings">
-                            <StackPanel Orientation="Horizontal">
-                                <TextBlock Text="⚙️" FontSize="16" VerticalAlignment="Center"/>
-                                <TextBlock Text=" Settings" Margin="4,0,0,0" VerticalAlignment="Center"
-                                           Visibility="{Binding IsSidebarCollapsed, Converter={StaticResource InvBoolToVis}}"/>
-                            </StackPanel>
-                        </Button>
-
-                        <!-- Theme toggle -->
-                        <Button Style="{StaticResource SidebarButtonStyle}"
-                                Command="{Binding ToggleThemeCommand}"
-                                Margin="0,0,0,2" ToolTip="Cycle: Dark → Light → System auto">
-                            <StackPanel Orientation="Horizontal">
-                                <TextBlock Text="{Binding ThemeButtonIcon}" FontSize="16" VerticalAlignment="Center"/>
-                                <TextBlock Text="{Binding ThemeButtonLabel}" Margin="4,0,0,0" VerticalAlignment="Center"
-                                           Visibility="{Binding IsSidebarCollapsed, Converter={StaticResource InvBoolToVis}}"/>
-                            </StackPanel>
-                        </Button>
-
-                        <!-- Collapse toggle -->
-                        <Button Style="{StaticResource SidebarButtonStyle}"
-                                Click="ToggleSidebar_Click"
-                                ToolTip="Collapse / expand sidebar">
-                            <TextBlock FontSize="14" VerticalAlignment="Center">
-                                <TextBlock.Style>
-                                    <Style TargetType="TextBlock">
-                                        <Setter Property="Text" Value="◀ Collapse"/>
-                                        <Style.Triggers>
-                                            <DataTrigger Binding="{Binding IsSidebarCollapsed}" Value="True">
-                                                <Setter Property="Text" Value="▶"/>
-                                            </DataTrigger>
-                                        </Style.Triggers>
-                                    </Style>
-                                </TextBlock.Style>
-                            </TextBlock>
-                        </Button>
-                    </StackPanel>
-
                     <!-- ── Branding (top) ── -->
                     <Border DockPanel.Dock="Top" Padding="10,14,10,12"
                             BorderBrush="{DynamicResource SurfaceBorderBrush}"
                             BorderThickness="0,0,0,1">
                         <StackPanel Orientation="Horizontal">
+                            <StackPanel.Style>
+                                <Style TargetType="StackPanel">
+                                    <Setter Property="HorizontalAlignment" Value="Left"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsSidebarCollapsed}" Value="True">
+                                            <Setter Property="HorizontalAlignment" Value="Center"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </StackPanel.Style>
                             <TextBlock Text="🛡️" FontSize="22" VerticalAlignment="Center"/>
                             <StackPanel Margin="8,0,0,0"
                                         Visibility="{Binding IsSidebarCollapsed, Converter={StaticResource InvBoolToVis}}">
                                 <TextBlock Text="EDF MOD MGR" FontSize="13" FontWeight="Bold"
                                            Foreground="{DynamicResource TextPrimaryBrush}"/>
-                                <TextBlock Text="{Binding WindowTitle}" FontSize="10"
+                                <TextBlock Text="{Binding ActiveGame.ShortName, TargetNullValue=No game selected}" FontSize="10"
                                            Foreground="{DynamicResource TextMutedBrush}"
                                            TextTrimming="CharacterEllipsis"/>
                             </StackPanel>
@@ -298,7 +296,9 @@
                                                 HorizontalContentAlignment="Left"
                                                 Padding="10,9" MinWidth="0" MinHeight="0" FontSize="13"
                                                 Command="{Binding DataContext.SwitchGameCommand, RelativeSource={RelativeSource AncestorType=Window}}"
-                                                CommandParameter="{Binding GameId}">
+                                            CommandParameter="{Binding GameId}"
+                                            AutomationProperties.AutomationId="{Binding GameId, StringFormat=GameSwitchButton_{0}}"
+                                            AutomationProperties.Name="{Binding DisplayName, StringFormat=Switch to {0}}">
                                             <Button.Style>
                                                 <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
                                                     <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
@@ -306,6 +306,10 @@
                                                         <DataTrigger Binding="{Binding IsActiveGame}" Value="True">
                                                             <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
                                                             <Setter Property="BorderThickness" Value="2"/>
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding DataContext.IsSidebarCollapsed, RelativeSource={RelativeSource AncestorType=Window}}" Value="True">
+                                                            <Setter Property="HorizontalContentAlignment" Value="Center"/>
+                                                            <Setter Property="Padding" Value="4,9"/>
                                                         </DataTrigger>
                                                     </Style.Triggers>
                                                 </Style>
@@ -407,7 +411,9 @@
 
                             <Button Style="{StaticResource DeployPrimaryButton}" Margin="0,0,0,6"
                                     Command="{Binding ApplyModsCommand}" IsEnabled="{Binding CanApplyMods}"
-                                    ToolTip="Apply current mods (Ctrl+Shift+A)">
+                                    ToolTip="Apply current mods (Ctrl+Shift+A)"
+                                    AutomationProperties.AutomationId="ApplyModsButton"
+                                    AutomationProperties.Name="Apply Mods">
                                 <StackPanel Orientation="Horizontal">
                                     <TextBlock Text="🚀" FontSize="16" VerticalAlignment="Center"/>
                                     <TextBlock Text=" Apply Mods" VerticalAlignment="Center"
@@ -417,7 +423,9 @@
 
                             <Button Style="{StaticResource DeploySecondaryButton}" Margin="0,0,0,6"
                                     Command="{Binding ApplyAndLaunchCommand}" IsEnabled="{Binding CanApplyAndLaunch}"
-                                    ToolTip="Apply mods and launch game (Ctrl+Alt+A)">
+                                    ToolTip="Apply mods and launch game (Ctrl+Alt+A)"
+                                    AutomationProperties.AutomationId="ApplyAndLaunchButton"
+                                    AutomationProperties.Name="Apply And Launch">
                                 <StackPanel Orientation="Horizontal">
                                     <TextBlock Text="🕹️" FontSize="16" VerticalAlignment="Center"/>
                                     <TextBlock Text=" Apply + Launch" VerticalAlignment="Center"
@@ -427,7 +435,9 @@
 
                             <Button Style="{StaticResource DeploySecondaryButton}" Margin="0,0,0,10"
                                     Command="{Binding LaunchGameCommand}" IsEnabled="{Binding CanLaunchGame}"
-                                    ToolTip="Launch game (Ctrl+Shift+L)">
+                                    ToolTip="Launch game (Ctrl+Shift+L)"
+                                    AutomationProperties.AutomationId="LaunchGameButton"
+                                    AutomationProperties.Name="Launch Game">
                                 <StackPanel Orientation="Horizontal">
                                     <TextBlock Text="🎮" FontSize="16" VerticalAlignment="Center"/>
                                     <TextBlock Text=" Launch Game" VerticalAlignment="Center"
@@ -444,6 +454,55 @@
                                            TextWrapping="Wrap" VerticalAlignment="Center"
                                            Visibility="{Binding IsSidebarCollapsed, Converter={StaticResource InvBoolToVis}}"/>
                             </DockPanel>
+
+                            <Separator Margin="0,14,0,10" Background="{DynamicResource SurfaceBorderBrush}"
+                                       Visibility="{Binding IsSidebarCollapsed, Converter={StaticResource InvBoolToVis}}"/>
+
+                            <TextBlock Text="APP" Style="{StaticResource KickerText}" Margin="4,0,0,6"
+                                       Visibility="{Binding IsSidebarCollapsed, Converter={StaticResource InvBoolToVis}}"/>
+
+                            <Button Style="{StaticResource SidebarButtonStyle}"
+                                    Command="{Binding OpenSettingsCommand}"
+                                    Margin="0,0,0,2" ToolTip="Open settings"
+                                    AutomationProperties.AutomationId="OpenSettingsButton"
+                                    AutomationProperties.Name="Open Settings">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="⚙️" FontSize="16" VerticalAlignment="Center"/>
+                                    <TextBlock Text=" Settings" Margin="4,0,0,0" VerticalAlignment="Center"
+                                               Visibility="{Binding IsSidebarCollapsed, Converter={StaticResource InvBoolToVis}}"/>
+                                </StackPanel>
+                            </Button>
+
+                            <Button Style="{StaticResource SidebarButtonStyle}"
+                                    Command="{Binding ToggleThemeCommand}"
+                                    Margin="0,0,0,2" ToolTip="Cycle: Dark → Light → System auto"
+                                    AutomationProperties.AutomationId="ToggleThemeButton"
+                                    AutomationProperties.Name="Toggle Theme">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="{Binding ThemeButtonIcon}" FontSize="16" VerticalAlignment="Center"/>
+                                    <TextBlock Text="{Binding ThemeButtonLabel}" Margin="4,0,0,0" VerticalAlignment="Center"
+                                               Visibility="{Binding IsSidebarCollapsed, Converter={StaticResource InvBoolToVis}}"/>
+                                </StackPanel>
+                            </Button>
+
+                            <Button Style="{StaticResource SidebarButtonStyle}"
+                                    Click="ToggleSidebar_Click"
+                                    ToolTip="Collapse / expand sidebar"
+                                    AutomationProperties.AutomationId="ToggleSidebarButton"
+                                    AutomationProperties.Name="Toggle Sidebar">
+                                <TextBlock FontSize="14" VerticalAlignment="Center">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Text" Value="◀ Collapse"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsSidebarCollapsed}" Value="True">
+                                                    <Setter Property="Text" Value="▶"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                            </Button>
 
                         </StackPanel>
                     </ScrollViewer>
@@ -469,13 +528,45 @@
             <Border Grid.Row="0" Margin="12,12,12,8" Padding="10,8" CornerRadius="10"
                     Background="{DynamicResource SurfaceBrush}"
                     BorderBrush="{DynamicResource SurfaceBorderBrush}" BorderThickness="1">
-                <DockPanel>
-                    <!-- Toolbar buttons (right) -->
-                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Margin="8,0,0,0">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+
+                    <WrapPanel Grid.Column="0" VerticalAlignment="Center">
+                        <TextBox Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
+                                 Width="240" VerticalContentAlignment="Center"
+                                 ToolTip="Search mods, folders, groups, warnings" Margin="0,0,10,0"
+                                 AutomationProperties.AutomationId="ModSearchTextBox"
+                                 AutomationProperties.Name="Search Mods"/>
+                        <CheckBox Content="Active only" IsChecked="{Binding ShowActiveOnly, Mode=TwoWay}"
+                                  VerticalAlignment="Center" Margin="0,0,10,0"
+                                  AutomationProperties.AutomationId="ShowActiveOnlyCheckBox"
+                                  AutomationProperties.Name="Show Active Only"/>
+                        <CheckBox Content="Conflicts" IsChecked="{Binding ShowConflictsOnly, Mode=TwoWay}"
+                                  VerticalAlignment="Center" Margin="0,0,10,0"
+                                  AutomationProperties.AutomationId="ShowConflictsOnlyCheckBox"
+                                  AutomationProperties.Name="Show Conflicts Only"/>
+                        <CheckBox Content="High risk" IsChecked="{Binding ShowRiskyOnly, Mode=TwoWay}"
+                                  VerticalAlignment="Center" Margin="0,0,10,0"
+                                  AutomationProperties.AutomationId="ShowRiskyOnlyCheckBox"
+                                  AutomationProperties.Name="Show Risky Only"/>
+                        <Button Content="Clear" Style="{StaticResource InlineSmallButton}" Margin="0,0,10,0"
+                                Command="{Binding ClearFiltersCommand}" ToolTip="Clear all filters"
+                                AutomationProperties.AutomationId="ClearFiltersButton"
+                                AutomationProperties.Name="Clear Filters"/>
+                    </WrapPanel>
+
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="12,0,0,0" VerticalAlignment="Center">
                         <Button Content="🔄" Style="{StaticResource InlineSmallButton}" Margin="0,0,4,0"
-                                Command="{Binding RefreshCommand}" ToolTip="Refresh (F5)"/>
+                                Command="{Binding RefreshCommand}" ToolTip="Refresh (F5)"
+                                AutomationProperties.AutomationId="RefreshButton"
+                                AutomationProperties.Name="Refresh"/>
                         <Button Content="📥 Import ▾" Style="{StaticResource InlineSmallButton}" Margin="0,0,4,0"
-                                Click="ToolbarMenuButton_Click">
+                                Click="ToolbarMenuButton_Click"
+                                AutomationProperties.AutomationId="ImportMenuButton"
+                                AutomationProperties.Name="Import Menu">
                             <Button.ContextMenu>
                                 <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
                                     <MenuItem Header="📦 Zip Archive..." Command="{Binding ImportZipCommand}" InputGestureText="Ctrl+Shift+I"/>
@@ -484,7 +575,9 @@
                             </Button.ContextMenu>
                         </Button>
                         <Button Content="🧰 Manage ▾" Style="{StaticResource InlineSmallButton}" Margin="0,0,4,0"
-                                Click="ToolbarMenuButton_Click">
+                                Click="ToolbarMenuButton_Click"
+                                AutomationProperties.AutomationId="ManageMenuButton"
+                                AutomationProperties.Name="Manage Menu">
                             <Button.ContextMenu>
                                 <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
                                     <MenuItem Header="✅ Enable All"       Command="{Binding EnableAllCommand}"/>
@@ -498,7 +591,9 @@
                             </Button.ContextMenu>
                         </Button>
                         <Button Content="🗂️ View ▾" Style="{StaticResource InlineSmallButton}" Margin="0,0,4,0"
-                                Click="ToolbarMenuButton_Click">
+                                Click="ToolbarMenuButton_Click"
+                                AutomationProperties.AutomationId="ViewMenuButton"
+                                AutomationProperties.Name="View Menu">
                             <Button.ContextMenu>
                                 <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
                                     <MenuItem Header="⬆️ Load Order View" Command="{Binding ShowLoadOrderViewCommand}"/>
@@ -508,29 +603,17 @@
                             </Button.ContextMenu>
                         </Button>
                         <Button x:Name="LoadoutButton" Content="📚 Loadout ▾"
-                                Style="{StaticResource InlineSmallButton}" Click="LoadoutButton_Click"/>
+                                Style="{StaticResource InlineSmallButton}" Click="LoadoutButton_Click"
+                                AutomationProperties.AutomationId="LoadoutButton"
+                                AutomationProperties.Name="Loadout Menu"/>
                     </StackPanel>
-
-                    <!-- Search + filter chips (left) -->
-                    <StackPanel Orientation="Horizontal">
-                        <TextBox Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
-                                 Width="200" VerticalContentAlignment="Center"
-                                 ToolTip="Search mods, folders, groups, warnings" Margin="0,0,8,0"/>
-                        <CheckBox Content="✅ Active" IsChecked="{Binding ShowActiveOnly, Mode=TwoWay}"
-                                  VerticalAlignment="Center" Margin="0,0,8,0"/>
-                        <CheckBox Content="⚠️ Conflicts" IsChecked="{Binding ShowConflictsOnly, Mode=TwoWay}"
-                                  VerticalAlignment="Center" Margin="0,0,8,0"/>
-                        <CheckBox Content="🔥 Risk" IsChecked="{Binding ShowRiskyOnly, Mode=TwoWay}"
-                                  VerticalAlignment="Center" Margin="0,0,8,0"/>
-                        <Button Content="🧹" Style="{StaticResource InlineSmallButton}"
-                                Command="{Binding ClearFiltersCommand}" ToolTip="Clear all filters"/>
-                    </StackPanel>
-                </DockPanel>
+                </Grid>
             </Border>
 
             <!-- Loadout Popup -->
-            <Popup x:Name="LoadoutPopup" PlacementTarget="{Binding ElementName=LoadoutButton}"
-                   Placement="Bottom" StaysOpen="False" AllowsTransparency="True">
+                        <Popup x:Name="LoadoutPopup" PlacementTarget="{Binding ElementName=LoadoutButton}"
+                                     Placement="Bottom" StaysOpen="False" AllowsTransparency="True"
+                                     AutomationProperties.AutomationId="LoadoutPopup">
                 <Border Margin="4" Padding="14" CornerRadius="10"
                         Background="{DynamicResource SurfaceBrush}"
                         BorderBrush="{DynamicResource AccentBrush}" BorderThickness="1">
@@ -555,15 +638,27 @@
                                 <ColumnDefinition Width="*"/>
                             </Grid.ColumnDefinitions>
                             <ComboBox Grid.Column="0" ItemsSource="{Binding AvailablePresets}"
-                                      SelectedItem="{Binding SelectedPresetName, Mode=TwoWay}" VerticalAlignment="Center"/>
+                                      SelectedItem="{Binding SelectedPresetName, Mode=TwoWay}" VerticalAlignment="Center"
+                                      AutomationProperties.AutomationId="PresetSelectorComboBox"
+                                      AutomationProperties.Name="Preset Selector"/>
                             <TextBox Grid.Column="2" Text="{Binding PresetNameInput, UpdateSourceTrigger=PropertyChanged}"
-                                     VerticalContentAlignment="Center" ToolTip="New preset name"/>
+                                     VerticalContentAlignment="Center" ToolTip="New preset name"
+                                     AutomationProperties.AutomationId="PresetNameTextBox"
+                                     AutomationProperties.Name="Preset Name"/>
                         </Grid>
                         <WrapPanel>
-                            <Button Content="💾 Save"   Command="{Binding SavePresetCommand}"   IsEnabled="{Binding CanSavePreset}"   Style="{StaticResource InlineSmallButton}" Margin="0,0,6,0"/>
-                            <Button Content="📥 Load"   Command="{Binding LoadPresetCommand}"   IsEnabled="{Binding CanLoadPreset}"   Style="{StaticResource InlineSmallButton}" Margin="0,0,6,0"/>
-                            <Button Content="✏️ Rename" Command="{Binding RenamePresetCommand}" IsEnabled="{Binding CanRenamePreset}" Style="{StaticResource InlineSmallButton}" Margin="0,0,6,0"/>
-                            <Button Content="🗑️ Delete" Command="{Binding DeletePresetCommand}" IsEnabled="{Binding CanDeletePreset}" Style="{StaticResource InlineSmallButton}"/>
+                                <Button Content="💾 Save"   Command="{Binding SavePresetCommand}"   IsEnabled="{Binding CanSavePreset}"   Style="{StaticResource InlineSmallButton}" Margin="0,0,6,0"
+                                    AutomationProperties.AutomationId="SavePresetButton"
+                                    AutomationProperties.Name="Save Preset"/>
+                                <Button Content="📥 Load"   Command="{Binding LoadPresetCommand}"   IsEnabled="{Binding CanLoadPreset}"   Style="{StaticResource InlineSmallButton}" Margin="0,0,6,0"
+                                    AutomationProperties.AutomationId="LoadPresetButton"
+                                    AutomationProperties.Name="Load Preset"/>
+                                <Button Content="✏️ Rename" Command="{Binding RenamePresetCommand}" IsEnabled="{Binding CanRenamePreset}" Style="{StaticResource InlineSmallButton}" Margin="0,0,6,0"
+                                    AutomationProperties.AutomationId="RenamePresetButton"
+                                    AutomationProperties.Name="Rename Preset"/>
+                                <Button Content="🗑️ Delete" Command="{Binding DeletePresetCommand}" IsEnabled="{Binding CanDeletePreset}" Style="{StaticResource InlineSmallButton}"
+                                    AutomationProperties.AutomationId="DeletePresetButton"
+                                    AutomationProperties.Name="Delete Preset"/>
                         </WrapPanel>
                     </StackPanel>
                 </Border>
@@ -607,7 +702,10 @@
                       AllowDrop="True"
                       RowStyle="{StaticResource ModGridRowStyle}"
                       CellStyle="{StaticResource ModGridCellStyle}"
+                      ColumnHeaderStyle="{StaticResource ModGridHeaderStyle}"
                       Background="{DynamicResource AppBgBrush}"
+                      AutomationProperties.AutomationId="ModsDataGrid"
+                      AutomationProperties.Name="Mods Grid"
                       PreviewMouseLeftButtonDown="DataGrid_PreviewMouseLeftButtonDown"
                       PreviewMouseMove="DataGrid_PreviewMouseMove"
                       DragOver="DataGrid_DragOver"
@@ -650,7 +748,7 @@
 
                 <DataGrid.Columns>
                     <!-- Active checkbox -->
-                    <DataGridTemplateColumn Header="✅" Width="46" IsReadOnly="True">
+                    <DataGridTemplateColumn Header="On" Width="52" IsReadOnly="True">
                         <DataGridTemplateColumn.CellTemplate>
                             <DataTemplate>
                                 <CheckBox IsChecked="{Binding IsActive, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
@@ -661,7 +759,7 @@
                     </DataGridTemplateColumn>
 
                     <!-- Load order badge -->
-                    <DataGridTemplateColumn Header="#" Width="54" SortMemberPath="LoadOrder">
+                    <DataGridTemplateColumn Header="Order" Width="68" SortMemberPath="LoadOrder">
                         <DataGridTemplateColumn.CellTemplate>
                             <DataTemplate>
                                 <Border CornerRadius="8" Padding="6,3" Background="{DynamicResource SurfaceBrush}">
@@ -683,7 +781,7 @@
                     </DataGridTemplateColumn>
 
                     <!-- Mod name + description -->
-                    <DataGridTemplateColumn Header="📦 Mod" Width="*" MinWidth="220" SortMemberPath="ModName" IsReadOnly="True">
+                    <DataGridTemplateColumn Header="Mod" Width="*" MinWidth="220" SortMemberPath="ModName" IsReadOnly="True">
                         <DataGridTemplateColumn.CellTemplate>
                             <DataTemplate>
                                 <StackPanel>
@@ -698,7 +796,7 @@
                     </DataGridTemplateColumn>
 
                     <!-- Group (cyan, editable) -->
-                    <DataGridTemplateColumn Header="📂 Group" Width="120" MinWidth="90" SortMemberPath="Group">
+                    <DataGridTemplateColumn Header="Group" Width="Auto" MinWidth="104" SortMemberPath="Group">
                         <DataGridTemplateColumn.CellTemplate>
                             <DataTemplate>
                                 <TextBlock Text="{Binding Group}" FontStyle="Italic"
@@ -716,8 +814,8 @@
                     </DataGridTemplateColumn>
 
                     <!-- Subfolders -->
-                    <DataGridTextColumn Header="🗃️ Folders" Binding="{Binding Subfolders}"
-                                        Width="150" MinWidth="110" IsReadOnly="True">
+                    <DataGridTextColumn Header="Folders" Binding="{Binding Subfolders}"
+                                        Width="Auto" MinWidth="132" IsReadOnly="True">
                         <DataGridTextColumn.ElementStyle>
                             <Style TargetType="TextBlock">
                                 <Setter Property="TextTrimming" Value="CharacterEllipsis"/>
@@ -728,7 +826,7 @@
                     </DataGridTextColumn>
 
                     <!-- Warning indicator -->
-                    <DataGridTemplateColumn Header="⚠️" Width="50" IsReadOnly="True">
+                    <DataGridTemplateColumn Header="Warnings" Width="84" IsReadOnly="True">
                         <DataGridTemplateColumn.CellTemplate>
                             <DataTemplate>
                                 <TextBlock HorizontalAlignment="Center" VerticalAlignment="Center"
@@ -760,10 +858,11 @@
                     </DataGridTemplateColumn>
 
                     <!-- Status pill -->
-                    <DataGridTemplateColumn Header="🔄 Status" Width="120" MinWidth="100" SortMemberPath="Status">
+                    <DataGridTemplateColumn Header="Status" Width="Auto" MinWidth="76" SortMemberPath="Status">
                         <DataGridTemplateColumn.CellTemplate>
                             <DataTemplate>
-                                <Border CornerRadius="8" Padding="8,4">
+                                <Border CornerRadius="8" Padding="8,4"
+                                        HorizontalAlignment="Center" VerticalAlignment="Center">
                                     <Border.Style>
                                         <Style TargetType="Border">
                                             <Setter Property="Background" Value="{DynamicResource SurfaceBrush}"/>
@@ -804,7 +903,7 @@
                     </DataGridTemplateColumn>
 
                     <!-- Move up/down -->
-                    <DataGridTemplateColumn Header="⬆⬇" Width="76" IsReadOnly="True">
+                    <DataGridTemplateColumn Header="Move" Width="92" IsReadOnly="True">
                         <DataGridTemplateColumn.CellTemplate>
                             <DataTemplate>
                                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
@@ -822,7 +921,7 @@
                     </DataGridTemplateColumn>
 
                     <!-- Info tooltip -->
-                    <DataGridTemplateColumn Header="ℹ️" Width="44" IsReadOnly="True">
+                    <DataGridTemplateColumn Header="Info" Width="54" IsReadOnly="True">
                         <DataGridTemplateColumn.CellTemplate>
                             <DataTemplate>
                                 <TextBlock Text="ℹ️" HorizontalAlignment="Center" VerticalAlignment="Center"
@@ -862,22 +961,64 @@
                 </DataGrid.Columns>
             </DataGrid>
 
+                <Border Grid.Row="2" Margin="12,0,12,0" Panel.ZIndex="1"
+                    AutomationProperties.AutomationId="EmptyLibraryState">
+                <Border.Style>
+                    <Style TargetType="Border" BasedOn="{StaticResource PanelCard}">
+                        <Setter Property="Visibility" Value="Collapsed"/>
+                        <Style.Triggers>
+                            <MultiDataTrigger>
+                                <MultiDataTrigger.Conditions>
+                                    <Condition Binding="{Binding TotalModCount}" Value="0"/>
+                                    <Condition Binding="{Binding IsBusy}" Value="False"/>
+                                </MultiDataTrigger.Conditions>
+                                <Setter Property="Visibility" Value="Visible"/>
+                            </MultiDataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </Border.Style>
+                <Grid MinHeight="320">
+                    <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" MaxWidth="520">
+                        <TextBlock Text="🧩" FontSize="44" HorizontalAlignment="Center"/>
+                        <TextBlock Text="Your mod library is empty"
+                                   FontSize="24" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource TextPrimaryBrush}"
+                                   Margin="0,12,0,0" TextAlignment="Center"/>
+                        <TextBlock Margin="0,10,0,0"
+                                   Foreground="{DynamicResource TextMutedBrush}"
+                                   TextWrapping="Wrap" TextAlignment="Center"
+                                   Text="Import a zip archive or an existing folder to start tracking load order, conflicts, and deploy status in one place."/>
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,18,0,0">
+                            <Button Content="📦 Import Zip" Style="{StaticResource InlineSmallButton}" Margin="0,0,8,0"
+                                    Command="{Binding ImportZipCommand}"/>
+                            <Button Content="📁 Import Folder" Style="{StaticResource InlineSmallButton}"
+                                    Command="{Binding ImportFolderCommand}"/>
+                        </StackPanel>
+                        <TextBlock Margin="0,12,0,0" Style="{StaticResource MutedText}" TextAlignment="Center"
+                                   Text="Shortcuts: Ctrl+Shift+I imports a zip, Ctrl+Shift+O imports a folder."/>
+                    </StackPanel>
+                </Grid>
+            </Border>
+
             <!-- ── Recent Imports Drawer ── -->
             <Border Grid.Row="3" Margin="12,8,12,0" CornerRadius="10"
                     Background="{DynamicResource SurfaceBrush}"
                     BorderBrush="{DynamicResource SurfaceBorderBrush}" BorderThickness="1"
+                    AutomationProperties.AutomationId="RecentImportsDrawer"
                     Visibility="{Binding HasRecentImports, Converter={StaticResource BoolToVis}}">
                 <StackPanel>
                     <Border x:Name="RecentImportsHeader" Padding="12,10" Cursor="Hand"
                             MouseLeftButtonUp="RecentImportsHeader_Click">
                         <DockPanel>
-                            <TextBlock Text="🕘 Recent Imports" Style="{StaticResource SectionTitleText}"/>
                             <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
                                 <Button Content="🧹 Clear" Style="{StaticResource InlineSmallButton}" Margin="0,0,8,0"
-                                        Command="{Binding ClearRecentImportsCommand}" IsEnabled="{Binding HasRecentImports}"/>
+                                    Command="{Binding ClearRecentImportsCommand}" IsEnabled="{Binding HasRecentImports}"
+                                    AutomationProperties.AutomationId="ClearRecentImportsButton"
+                                    AutomationProperties.Name="Clear Recent Imports"/>
                                 <TextBlock x:Name="RecentImportsChevron" Text="▲" FontSize="11"
                                            Foreground="{DynamicResource TextMutedBrush}" VerticalAlignment="Center"/>
                             </StackPanel>
+                            <TextBlock Text="🕘 Recent Imports" Style="{StaticResource SectionTitleText}"/>
                         </DockPanel>
                     </Border>
                     <Border x:Name="RecentImportsContent" Padding="12,0,12,12">
@@ -907,7 +1048,9 @@
                                     <StackPanel Grid.Column="2" Orientation="Horizontal" Margin="12,0,0,0" VerticalAlignment="Center">
                                         <Button Margin="0,0,6,0"
                                                 Command="{Binding ToggleRecentImportPinCommand}"
-                                                CommandParameter="{Binding LatestRecentImport}">
+                                            CommandParameter="{Binding LatestRecentImport}"
+                                            AutomationProperties.AutomationId="ToggleLatestRecentImportPinButton"
+                                            AutomationProperties.Name="Toggle Latest Recent Import Pin">
                                             <Button.Style>
                                                 <Style TargetType="Button" BasedOn="{StaticResource InlineSmallButton}">
                                                     <Setter Property="Content" Value="📌 Pin"/>
@@ -923,10 +1066,14 @@
                                                 Tag="RecentImportPrimaryAction"
                                                 PreviewKeyDown="RecentImportCardPrimaryAction_PreviewKeyDown"
                                                 Command="{Binding SelectRecentImportCommand}"
-                                                CommandParameter="{Binding LatestRecentImport}"/>
+                                            CommandParameter="{Binding LatestRecentImport}"
+                                            AutomationProperties.AutomationId="SelectLatestRecentImportButton"
+                                            AutomationProperties.Name="Select Latest Recent Import"/>
                                         <Button Content="📁 Open" Style="{StaticResource InlineSmallButton}"
                                                 Command="{Binding OpenRecentImportFolderCommand}"
-                                                CommandParameter="{Binding LatestRecentImport}"/>
+                                            CommandParameter="{Binding LatestRecentImport}"
+                                            AutomationProperties.AutomationId="OpenLatestRecentImportFolderButton"
+                                            AutomationProperties.Name="Open Latest Recent Import Folder"/>
                                     </StackPanel>
                                 </Grid>
                             </Border>
@@ -965,17 +1112,20 @@
             <Border Grid.Row="4" Margin="12,8,12,0" CornerRadius="10"
                     Background="{DynamicResource SurfaceBrush}"
                     BorderBrush="{DynamicResource WarningBrush}" BorderThickness="1"
+                    AutomationProperties.AutomationId="ConflictRadarDrawer"
                     Visibility="{Binding IsConflictPanelVisible, Converter={StaticResource BoolToVis}}">
                 <StackPanel>
                     <Border Padding="12,10" Cursor="Hand" MouseLeftButtonUp="ConflictRadarHeader_Click">
                         <DockPanel>
-                            <TextBlock Text="⚠️ Conflict Radar" Style="{StaticResource SectionTitleText}"/>
                             <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
                                 <Button Content="✕ Hide" Style="{StaticResource InlineSmallButton}" Margin="0,0,8,0"
-                                        Command="{Binding HideConflictPanelCommand}"/>
+                                    Command="{Binding HideConflictPanelCommand}"
+                                    AutomationProperties.AutomationId="HideConflictRadarButton"
+                                    AutomationProperties.Name="Hide Conflict Radar"/>
                                 <TextBlock x:Name="ConflictRadarChevron" Text="▲" FontSize="11"
                                            Foreground="{DynamicResource TextMutedBrush}" VerticalAlignment="Center"/>
                             </StackPanel>
+                            <TextBlock Text="⚠️ Conflict Radar" Style="{StaticResource SectionTitleText}"/>
                         </DockPanel>
                     </Border>
                     <Border x:Name="ConflictRadarContent" Padding="12,0,12,12">
@@ -1014,23 +1164,28 @@
                                                         <Run Text=" (#"/><Run Text="{Binding LoserLoadOrder, Mode=OneWay}"/><Run Text=")"/>
                                                     </TextBlock>
                                                 </StackPanel>
-                                                <StackPanel Grid.Column="1" Margin="12,0,0,0" VerticalAlignment="Center">
-                                                    <Button Content="🎯 Winner" Margin="0,0,0,4" Padding="8,3"
+                                                <StackPanel Grid.Column="1" Margin="10,0,0,0" VerticalAlignment="Center"
+                                                            Orientation="Horizontal">
+                                                    <Button Width="30" Height="30" Padding="4" Margin="0,0,4,0" FontSize="14"
                                                             Style="{StaticResource InlineSmallButton}"
+                                                            ToolTip="Select Winner"
                                                             Command="{Binding DataContext.SelectConflictWinnerCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
-                                                            CommandParameter="{Binding}"/>
-                                                    <Button Content="🎯 Loser" Margin="0,0,0,4" Padding="8,3"
+                                                            CommandParameter="{Binding}">🏆</Button>
+                                                    <Button Width="30" Height="30" Padding="4" Margin="0,0,4,0" FontSize="14"
                                                             Style="{StaticResource InlineSmallButton}"
+                                                            ToolTip="Select Loser"
                                                             Command="{Binding DataContext.SelectConflictLoserCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
-                                                            CommandParameter="{Binding}"/>
-                                                    <Button Content="🏆 Make Win" Padding="8,3"
+                                                            CommandParameter="{Binding}">🧯</Button>
+                                                    <Button Width="30" Height="30" Padding="4" Margin="0,0,4,0" FontSize="14"
                                                             Style="{StaticResource InlineSmallButton}"
+                                                            ToolTip="Make Loser Win"
                                                             Command="{Binding DataContext.MakeLoserWinCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
-                                                            CommandParameter="{Binding}"/>
-                                                    <Button Content="⬇️ Lower Win" Margin="0,4,0,0" Padding="8,3"
+                                                            CommandParameter="{Binding}">⬆</Button>
+                                                    <Button Width="30" Height="30" Padding="4" FontSize="14"
                                                             Style="{StaticResource InlineSmallButton}"
+                                                            ToolTip="Lower Winner Priority"
                                                             Command="{Binding DataContext.MoveWinnerDownCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
-                                                            CommandParameter="{Binding}"/>
+                                                            CommandParameter="{Binding}">⬇</Button>
                                                 </StackPanel>
                                             </Grid>
                                         </Border>
@@ -1056,9 +1211,9 @@
                                      Width="18" Height="18" Margin="8,0,0,0" VerticalAlignment="Center"
                                      Visibility="{Binding IsBusy, Converter={StaticResource BoolToVis}}"/>
                     <TextBlock Text="🛰️" Margin="0,0,8,0" VerticalAlignment="Center"
-                               Foreground="{DynamicResource TextMutedBrush}"/>
-                    <TextBlock Text="{Binding StatusText}" FontSize="12"
-                               Foreground="{DynamicResource TextMutedBrush}"
+                               Foreground="{DynamicResource AccentBrush}"/>
+                    <TextBlock Text="{Binding StatusText}" FontSize="12" FontWeight="SemiBold"
+                               Foreground="{DynamicResource TextPrimaryBrush}"
                                TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
                 </DockPanel>
             </Border>
@@ -1068,7 +1223,8 @@
         <!--  DROP OVERLAY (spans both cols)    -->
         <!-- ══════════════════════════════════ -->
         <Grid x:Name="DropOverlay" Grid.ColumnSpan="2" Panel.ZIndex="100"
-              Visibility="Collapsed" IsHitTestVisible="False">
+              Visibility="Collapsed" IsHitTestVisible="False"
+              AutomationProperties.AutomationId="DropOverlay">
             <Border Margin="24" CornerRadius="18" BorderThickness="3"
                     BorderBrush="{DynamicResource AccentBrush}"
                     Background="{DynamicResource SurfaceBrush}" Opacity="0.97">

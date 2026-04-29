@@ -8,7 +8,9 @@
         ResizeMode="CanResize"
         MinHeight="620"
         MinWidth="680"
-        ui:WindowHelper.UseModernWindowStyle="True">
+        ui:WindowHelper.UseModernWindowStyle="True"
+        AutomationProperties.AutomationId="ApplySummaryWindow"
+        AutomationProperties.Name="Apply Summary Window">
 
     <Window.Resources>
         <BooleanToVisibilityConverter x:Key="BoolToVis"/>
@@ -32,14 +34,17 @@
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <StackPanel Grid.Row="0">
-            <TextBlock Text="Apply Summary" FontSize="24" FontWeight="SemiBold"/>
+        <StackPanel Grid.Row="0" AutomationProperties.AutomationId="ApplySummaryHeader">
+            <TextBlock Text="Apply Summary" FontSize="24" FontWeight="SemiBold"
+                   AutomationProperties.AutomationId="ApplySummaryTitle"/>
             <TextBlock Margin="0,6,0,0"
-                       Foreground="Gray"
+                       Foreground="{DynamicResource TextMutedBrush}"
+                       TextWrapping="Wrap"
                        Text="Review the file changes, conflict winners, and risk signals before deploying mods to the game folder."/>
         </StackPanel>
 
-        <Border Grid.Row="2" Style="{StaticResource SectionBorderStyle}">
+        <Border Grid.Row="2" Style="{StaticResource SectionBorderStyle}"
+            AutomationProperties.AutomationId="ApplySummaryOverviewCard">
             <Grid>
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto"/>
@@ -77,21 +82,23 @@
                     <TextBlock Margin="0,4,0,0">
                         <Run Text="Conflicted Files: "/><Run Text="{Binding Preview.ConflictFileCount, Mode=OneWay}"/>
                     </TextBlock>
-                    <TextBlock Margin="0,4,0,0" Foreground="OrangeRed">
+                    <TextBlock Margin="0,4,0,0" Foreground="{DynamicResource WarningBrush}">
                         <Run Text="High-Risk Mods: "/><Run Text="{Binding Preview.HighRiskModCount, Mode=OneWay}"/>
                     </TextBlock>
                 </StackPanel>
 
                 <TextBlock Grid.Row="2" Grid.ColumnSpan="2"
-                           Foreground="Gray"
+                           Foreground="{DynamicResource TextMutedBrush}"
                            TextWrapping="Wrap"
                            Text="Apply will create a last-apply backup snapshot, clean previously managed files in the game's Mods folder, copy the current winning files, save the active registry, and refresh conflict status indicators."/>
             </Grid>
         </Border>
 
-        <ScrollViewer Grid.Row="4" VerticalScrollBarVisibility="Auto">
+        <ScrollViewer Grid.Row="4" VerticalScrollBarVisibility="Auto"
+                      AutomationProperties.AutomationId="ApplySummarySectionsScroller">
             <StackPanel>
                 <Border Style="{StaticResource SectionBorderStyle}"
+                        AutomationProperties.AutomationId="ActiveLoadOrderSection"
                         Visibility="{Binding ActiveModsSection.HasItems, Converter={StaticResource BoolToVis}}">
                     <StackPanel>
                         <DockPanel Margin="0,0,0,8">
@@ -113,6 +120,7 @@
                 </Border>
 
                 <Border Style="{StaticResource SectionBorderStyle}"
+                        AutomationProperties.AutomationId="FilesToAddSection"
                         Visibility="{Binding AddedFilesSection.HasItems, Converter={StaticResource BoolToVis}}">
                     <StackPanel>
                         <DockPanel Margin="0,0,0,8">
@@ -134,6 +142,7 @@
                 </Border>
 
                 <Border Style="{StaticResource SectionBorderStyle}"
+                        AutomationProperties.AutomationId="FilesToRemoveSection"
                         Visibility="{Binding RemovedFilesSection.HasItems, Converter={StaticResource BoolToVis}}">
                     <StackPanel>
                         <DockPanel Margin="0,0,0,8">
@@ -155,6 +164,7 @@
                 </Border>
 
                 <Border Style="{StaticResource SectionBorderStyle}"
+                        AutomationProperties.AutomationId="FilesWithNewWinnersSection"
                         Visibility="{Binding ReplacedFilesSection.HasItems, Converter={StaticResource BoolToVis}}">
                     <StackPanel>
                         <DockPanel Margin="0,0,0,8">
@@ -176,6 +186,7 @@
                 </Border>
 
                 <Border Style="{StaticResource SectionBorderStyle}"
+                        AutomationProperties.AutomationId="ConflictWinnersSection"
                         Visibility="{Binding ConflictSection.HasItems, Converter={StaticResource BoolToVis}}">
                     <StackPanel>
                         <DockPanel Margin="0,0,0,8">
@@ -197,6 +208,7 @@
                 </Border>
 
                 <Border Style="{StaticResource SectionBorderStyle}"
+                        AutomationProperties.AutomationId="HighRiskModsSection"
                         Visibility="{Binding HighRiskModsSection.HasItems, Converter={StaticResource BoolToVis}}">
                     <StackPanel>
                         <DockPanel Margin="0,0,0,8">
@@ -210,7 +222,7 @@
                         <ItemsControl ItemsSource="{Binding HighRiskModsSection.VisibleItems}">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate>
-                                    <TextBlock Margin="0,0,0,4" Text="{Binding}" TextWrapping="Wrap" Foreground="OrangeRed"/>
+                                    <TextBlock Margin="0,0,0,4" Text="{Binding}" TextWrapping="Wrap" Foreground="{DynamicResource WarningBrush}"/>
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
@@ -220,8 +232,12 @@
         </ScrollViewer>
 
         <StackPanel Grid.Row="6" Orientation="Horizontal" HorizontalAlignment="Right">
-            <Button Content="Cancel" Width="90" Margin="0,0,8,0" Click="Cancel_Click"/>
-            <Button Content="Apply Mods" Width="120" Style="{StaticResource AccentButtonStyle}" Click="Apply_Click"/>
+            <Button Content="Cancel" Width="90" Margin="0,0,8,0" Click="Cancel_Click"
+                    AutomationProperties.AutomationId="CancelApplySummaryButton"
+                    AutomationProperties.Name="Cancel Apply Summary"/>
+            <Button Content="Apply Mods" Width="120" Style="{StaticResource AccentButtonStyle}" Click="Apply_Click"
+                    AutomationProperties.AutomationId="ConfirmApplyModsButton"
+                    AutomationProperties.Name="Confirm Apply Mods"/>
         </StackPanel>
     </Grid>
 </Window>

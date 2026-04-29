@@ -16,6 +16,12 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Compile Remove="Tools\**\*.cs" />
+    <EmbeddedResource Remove="Tools\**\*" />
+    <None Remove="Tools\**\*" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.*" />
     <PackageReference Include="ModernWpfUI" Version="0.9.*" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="9.*" />

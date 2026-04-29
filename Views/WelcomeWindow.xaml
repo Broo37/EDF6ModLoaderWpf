@@ -6,7 +6,9 @@
         Height="460" Width="500"
         WindowStartupLocation="CenterScreen"
         ResizeMode="NoResize"
-        ui:WindowHelper.UseModernWindowStyle="True">
+        ui:WindowHelper.UseModernWindowStyle="True"
+        AutomationProperties.AutomationId="WelcomeWindow"
+        AutomationProperties.Name="EDF Mod Manager Welcome Window">
 
     <Grid Margin="32">
         <Grid.RowDefinitions>
@@ -30,20 +32,24 @@
 
         <!-- Subtitle -->
         <TextBlock Grid.Row="2" Text="Which game do you want to set up first?"
-                   FontSize="14" HorizontalAlignment="Center" Foreground="Gray"/>
+                   FontSize="14" HorizontalAlignment="Center" Foreground="{DynamicResource TextMutedBrush}"/>
 
         <!-- Game selection radio buttons -->
         <RadioButton x:Name="Edf41Radio" Grid.Row="4" GroupName="GameSelect"
-                     Margin="0,0,0,8" Padding="8,6">
+                     Margin="0,0,0,8" Padding="8,6"
+                     AutomationProperties.AutomationId="Edf41RadioButton"
+                     AutomationProperties.Name="Earth Defense Force 4.1">
             <StackPanel Orientation="Horizontal">
                 <TextBlock Text="🔵" FontSize="16" VerticalAlignment="Center" Margin="0,0,8,0"/>
                 <TextBlock Text="Earth Defense Force 4.1: The Shadow of New Despair"
-                           FontSize="14" VerticalAlignment="Center"/>
+                           FontSize="14" VerticalAlignment="Center" TextWrapping="Wrap"/>
             </StackPanel>
         </RadioButton>
 
         <RadioButton x:Name="Edf5Radio" Grid.Row="5" GroupName="GameSelect"
-                     Margin="0,0,0,8" Padding="8,6">
+                     Margin="0,0,0,8" Padding="8,6"
+                     AutomationProperties.AutomationId="Edf5RadioButton"
+                     AutomationProperties.Name="Earth Defense Force 5">
             <StackPanel Orientation="Horizontal">
                 <TextBlock Text="🟢" FontSize="16" VerticalAlignment="Center" Margin="0,0,8,0"/>
                 <TextBlock Text="Earth Defense Force 5"
@@ -52,7 +58,9 @@
         </RadioButton>
 
         <RadioButton x:Name="Edf6Radio" Grid.Row="6" GroupName="GameSelect"
-                     IsChecked="True" Margin="0,0,0,8" Padding="8,6">
+                     IsChecked="True" Margin="0,0,0,8" Padding="8,6"
+                     AutomationProperties.AutomationId="Edf6RadioButton"
+                     AutomationProperties.Name="Earth Defense Force 6">
             <StackPanel Orientation="Horizontal">
                 <TextBlock Text="🔴" FontSize="16" VerticalAlignment="Center" Margin="0,0,8,0"/>
                 <TextBlock Text="Earth Defense Force 6"
@@ -62,7 +70,7 @@
 
         <!-- Tip -->
         <TextBlock Grid.Row="8" HorizontalAlignment="Center"
-                   FontSize="12" Foreground="Gray" TextWrapping="Wrap" TextAlignment="Center"
+                   FontSize="12" Foreground="{DynamicResource TextMutedBrush}" TextWrapping="Wrap" TextAlignment="Center"
                    Text="💡 You can configure the other games later in Settings!"/>
 
         <!-- Get Started button -->
@@ -70,6 +78,8 @@
                 HorizontalAlignment="Center" Padding="32,10"
                 FontSize="16" FontWeight="SemiBold"
                 Style="{StaticResource AccentButtonStyle}"
-                Click="GetStarted_Click"/>
+                Click="GetStarted_Click"
+                AutomationProperties.AutomationId="GetStartedButton"
+                AutomationProperties.Name="Get Started"/>
     </Grid>
 </Window>

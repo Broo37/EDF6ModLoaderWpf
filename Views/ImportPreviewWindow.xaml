@@ -6,7 +6,9 @@
         Height="580" Width="660"
         WindowStartupLocation="CenterOwner"
         ResizeMode="NoResize"
-        ui:WindowHelper.UseModernWindowStyle="True">
+        ui:WindowHelper.UseModernWindowStyle="True"
+        AutomationProperties.AutomationId="ImportPreviewWindow"
+        AutomationProperties.Name="Import Preview Window">
 
     <Window.Resources>
         <BooleanToVisibilityConverter x:Key="BoolToVis"/>
@@ -27,10 +29,12 @@
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <TextBlock Grid.Row="0" Text="📥 Import Preview" FontSize="22" FontWeight="SemiBold"/>
+        <TextBlock Grid.Row="0" Text="📥 Import Preview" FontSize="22" FontWeight="SemiBold"
+               AutomationProperties.AutomationId="ImportPreviewTitle"/>
 
         <Border Grid.Row="2" Padding="12" CornerRadius="6"
-                Background="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}">
+            Background="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}"
+            AutomationProperties.AutomationId="ImportSourceSummaryCard">
             <StackPanel>
                 <TextBlock FontWeight="SemiBold">
                     <Run Text="Source: "/><Run Text="{Binding Preview.SourceDisplayName}"/>
@@ -72,13 +76,17 @@
             </StackPanel>
         </Border>
 
-        <StackPanel Grid.Row="4">
+        <StackPanel Grid.Row="4" AutomationProperties.AutomationId="ImportOptionsPanel">
             <TextBlock Text="Import Options" FontWeight="SemiBold" FontSize="14" Margin="0,0,0,6"/>
-            <RadioButton IsChecked="{Binding ImportAsCopySelected}" Margin="0,0,0,6">
+            <RadioButton IsChecked="{Binding ImportAsCopySelected}" Margin="0,0,0,6"
+                         AutomationProperties.AutomationId="ImportAsCopyRadioButton"
+                         AutomationProperties.Name="Import As New Copy">
                 <TextBlock Text="Import as new copy (recommended)"/>
             </RadioButton>
             <RadioButton IsChecked="{Binding ReplaceExistingSelected}"
-                         Visibility="{Binding CanReplaceExisting, Converter={StaticResource BoolToVis}}">
+                         Visibility="{Binding CanReplaceExisting, Converter={StaticResource BoolToVis}}"
+                         AutomationProperties.AutomationId="ReplaceExistingRadioButton"
+                         AutomationProperties.Name="Replace Existing Folder">
                 <TextBlock>
                     <Run Text="Replace existing folder: "/>
                     <Run Text="{Binding Preview.ReplaceTargetFolderName}" FontWeight="SemiBold"/>
@@ -87,7 +95,8 @@
         </StackPanel>
 
         <StackPanel Grid.Row="6"
-                    Visibility="{Binding HasDuplicateCandidates, Converter={StaticResource BoolToVis}}">
+                Visibility="{Binding HasDuplicateCandidates, Converter={StaticResource BoolToVis}}"
+                AutomationProperties.AutomationId="DuplicateCandidatesPanel">
             <TextBlock Text="Possible Duplicates" FontWeight="SemiBold" FontSize="14" Margin="0,0,0,6"/>
             <ItemsControl ItemsSource="{Binding Preview.DuplicateCandidates}">
                 <ItemsControl.ItemTemplate>
@@ -101,11 +110,13 @@
         </StackPanel>
 
         <StackPanel Grid.Row="8"
-                    Visibility="{Binding HasWarnings, Converter={StaticResource BoolToVis}}">
+                Visibility="{Binding HasWarnings, Converter={StaticResource BoolToVis}}"
+                AutomationProperties.AutomationId="ImportWarningsPanel">
             <TextBlock Text="Warnings" FontWeight="SemiBold" FontSize="14" Margin="0,0,0,6"
                        Visibility="{Binding HasWarnings, Converter={StaticResource BoolToVis}}"/>
             <Border Padding="12" CornerRadius="6"
-                    Background="{DynamicResource SystemControlBackgroundBaseLowBrush}">
+                Background="{DynamicResource SystemControlBackgroundBaseLowBrush}"
+                AutomationProperties.AutomationId="ImportWarningsCard">
                 <ScrollViewer VerticalScrollBarVisibility="Auto" MaxHeight="180">
                     <ItemsControl ItemsSource="{Binding Preview.Warnings}">
                         <ItemsControl.ItemTemplate>
@@ -121,8 +132,12 @@
         </StackPanel>
 
         <StackPanel Grid.Row="10" Orientation="Horizontal" HorizontalAlignment="Right">
-            <Button Content="Cancel" Width="90" Margin="0,0,8,0" Click="Cancel_Click"/>
-            <Button Content="Import" Width="110" Style="{StaticResource AccentButtonStyle}" Click="Import_Click"/>
+            <Button Content="Cancel" Width="90" Margin="0,0,8,0" Click="Cancel_Click"
+                    AutomationProperties.AutomationId="CancelImportPreviewButton"
+                    AutomationProperties.Name="Cancel Import Preview"/>
+            <Button Content="Import" Width="110" Style="{StaticResource AccentButtonStyle}" Click="Import_Click"
+                    AutomationProperties.AutomationId="ConfirmImportButton"
+                    AutomationProperties.Name="Confirm Import"/>
         </StackPanel>
     </Grid>
 </Window>
