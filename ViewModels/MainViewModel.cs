@@ -92,6 +92,15 @@ public partial class MainViewModel : ObservableObject
     private int _highRiskModCount;
 
     [ObservableProperty]
+    private int _totalModCount;
+
+    [ObservableProperty]
+    private int _activeModCount;
+
+    [ObservableProperty]
+    private int _conflictModCount;
+
+    [ObservableProperty]
     private string _searchText = string.Empty;
 
     [ObservableProperty]
@@ -296,9 +305,6 @@ public partial class MainViewModel : ObservableObject
         ModsLibraryDirectory = profile.ModLibraryPath;
         WindowTitle = $"🛡️ EDF Mod Manager — {profile.DisplayName}";
 
-        // Apply per-game accent color
-        ThemeHelper.ApplyAccentColor(profile.BannerColor);
-
         if (profile.IsConfigured)
         {
             await RefreshAsync();
@@ -306,6 +312,11 @@ public partial class MainViewModel : ObservableObject
         else
         {
             Mods.Clear();
+            TotalModCount = 0;
+            ActiveModCount = 0;
+            ConflictModCount = 0;
+            WarningModCount = 0;
+            HighRiskModCount = 0;
             ClearPresetState();
             ConflictReport.Clear();
             IsConflictPanelVisible = false;
@@ -1363,21 +1374,22 @@ public partial class MainViewModel : ObservableObject
 
     private void UpdateStatusBar()
     {
-        int activeCount = Mods.Count(m => m.IsActive);
-        int conflictCount = Mods.Count(m => m.HasConflict);
+        TotalModCount = Mods.Count;
+        ActiveModCount = Mods.Count(m => m.IsActive);
+        ConflictModCount = Mods.Count(m => m.HasConflict);
         WarningModCount = Mods.Count(m => m.HasWarnings);
         HighRiskModCount = Mods.Count(m => m.IsHighRisk);
 
         var sb = new StringBuilder();
         if (ActiveGame is not null)
             sb.Append($"🎮 {ActiveGame.ShortName} | ");
-        sb.Append($"✅ {activeCount} mod(s) active");
+        sb.Append($"✅ {ActiveModCount} mod(s) active");
         if (!string.IsNullOrWhiteSpace(ActivePresetName))
             sb.Append($" | 📚 {ActivePresetName}");
         if (IsActivePresetDirty)
             sb.Append(" | ✏️ loadout modified");
-        if (conflictCount > 0)
-            sb.Append($" | ⚠️ {conflictCount} conflict(s) detected");
+        if (ConflictModCount > 0)
+            sb.Append($" | ⚠️ {ConflictModCount} conflict(s) detected");
         if (WarningModCount > 0)
             sb.Append($" | 🛡️ {WarningModCount} warning(s)");
         if (HighRiskModCount > 0)

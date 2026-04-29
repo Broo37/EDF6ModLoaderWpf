@@ -27,6 +27,18 @@ public sealed class AppSettings
     public string FontFamily { get; set; } = "Segoe UI";
 
     /// <summary>
+    /// User theme override: "Dark", "Light", or null to follow the Windows system theme.
+    /// </summary>
+    [JsonPropertyName("themeOverride")]
+    public string? ThemeOverride { get; set; }
+
+    /// <summary>
+    /// Whether the sidebar starts collapsed. Persisted across sessions.
+    /// </summary>
+    [JsonPropertyName("sidebarCollapsed")]
+    public bool SidebarCollapsed { get; set; }
+
+    /// <summary>
     /// Runtime-only list of all game profiles, populated from SupportedGames
     /// constants and per-game config files on disk. Not serialized.
     /// </summary>
