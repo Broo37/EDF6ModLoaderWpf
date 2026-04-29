@@ -34,6 +34,7 @@ namespace EDF6ModLoaderWpf
                 var settingsService = _serviceProvider.GetRequiredService<SettingsService>();
                 var settings = await settingsService.LoadAsync();
                 FontHelper.ApplyFont(settings.FontFamily);
+                ThemeHelper.LoadSavedOrSystemTheme(settings.ThemeOverride);
 
                 // Create and show the main window
                 var mainWindow = new MainWindow();
