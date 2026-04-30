@@ -102,29 +102,14 @@ internal sealed class WpfAutomationClient
             ? request.WindowTitleContains
             : targetWindowTitleContains;
         var captureBounds = ResolveCaptureBounds(session, captureWindowTitle, automationId, request.TimeoutMs);
-        BringWindowToForeground(captureBounds.Handle);
 
-        var left = captureBounds.Left;
-        var top = captureBounds.Top;
-        var width = captureBounds.Width;
-        var height = captureBounds.Height;
-
-        if (width <= 0 || height <= 0)
+        if (captureBounds.Width <= 0 || captureBounds.Height <= 0)
             throw new InvalidOperationException("The target element is not visible on screen.");
 
         var resolvedOutputPath = ResolveScreenshotPath(outputPath);
         Directory.CreateDirectory(Path.GetDirectoryName(resolvedOutputPath)!);
 
-        using var bitmap = new Bitmap(width, height);
-        using var graphics = Graphics.FromImage(bitmap);
-        graphics.CopyFromScreen(
-            left,
-            top,
-            0,
-            0,
-            new Size(width, height),
-            CopyPixelOperation.SourceCopy);
-        bitmap.Save(resolvedOutputPath, System.Drawing.Imaging.ImageFormat.Png);
+        CaptureWindowWithPrintWindow(captureBounds, resolvedOutputPath);
 
         return resolvedOutputPath;
     }
@@ -418,6 +403,51 @@ internal sealed class WpfAutomationClient
         return rect;
     }
 
+    private static void CaptureWindowWithPrintWindow(CaptureBounds captureBounds, string outputPath)
+    {
+        // Always capture the full window via PrintWindow (works off-screen, behind other windows,
+        // and gets the real DWM-composited frame — unlike CopyFromScreen which grabs a stale GDI buffer).
+        var windowRect = GetWindowRect(captureBounds.Handle);
+        var windowWidth  = Math.Max(1, windowRect.Right  - windowRect.Left);
+        var windowHeight = Math.Max(1, windowRect.Bottom - windowRect.Top);
+
+        using var windowBitmap   = new Bitmap(windowWidth, windowHeight);
+        using var windowGraphics = Graphics.FromImage(windowBitmap);
+
+        var hdc = windowGraphics.GetHdc();
+        try
+        {
+            NativeMethods.PrintWindow(captureBounds.Handle, hdc, NativeMethods.PwRenderFullContent);
+        }
+        finally
+        {
+            windowGraphics.ReleaseHdc(hdc);
+        }
+
+        // If capturing a sub-element, crop to its bounds relative to the window origin.
+        bool isSubElement =
+            captureBounds.Left   != windowRect.Left   ||
+            captureBounds.Top    != windowRect.Top    ||
+            captureBounds.Width  != windowWidth       ||
+            captureBounds.Height != windowHeight;
+
+        if (isSubElement)
+        {
+            var cropRect = new Rectangle(
+                captureBounds.Left - windowRect.Left,
+                captureBounds.Top  - windowRect.Top,
+                captureBounds.Width,
+                captureBounds.Height);
+
+            using var cropped = windowBitmap.Clone(cropRect, windowBitmap.PixelFormat);
+            cropped.Save(outputPath, System.Drawing.Imaging.ImageFormat.Png);
+        }
+        else
+        {
+            windowBitmap.Save(outputPath, System.Drawing.Imaging.ImageFormat.Png);
+        }
+    }
+
     private static void BringWindowToForeground(IntPtr handle)
     {
         if (handle == IntPtr.Zero)
@@ -521,6 +551,7 @@ internal sealed class WpfAutomationClient
 
         internal const int SwRestore = 9;
         internal const int WmClose = 0x0010;
+        internal const uint PwRenderFullContent = 0x00000002;
 
         [StructLayout(LayoutKind.Sequential)]
         internal struct RECT
@@ -530,6 +561,10 @@ internal sealed class WpfAutomationClient
             public int Right;
             public int Bottom;
         }
+
+        [DllImport("user32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        internal static extern bool PrintWindow(IntPtr hWnd, IntPtr hdcBlt, uint nFlags);
 
         [DllImport("user32.dll")]
         [return: MarshalAs(UnmanagedType.Bool)]

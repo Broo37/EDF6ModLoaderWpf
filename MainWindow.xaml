@@ -548,6 +548,10 @@
                                   VerticalAlignment="Center" Margin="0,0,10,0"
                                   AutomationProperties.AutomationId="ShowConflictsOnlyCheckBox"
                                   AutomationProperties.Name="Show Conflicts Only"/>
+                        <Button Content="⚠ Radar" Style="{StaticResource InlineSmallButton}" Margin="0,0,10,0"
+                                Command="{Binding ToggleConflictPanelCommand}" ToolTip="Show or hide conflict radar"
+                                AutomationProperties.AutomationId="ToggleConflictRadarButton"
+                                AutomationProperties.Name="Toggle Conflict Radar"/>
                         <CheckBox Content="High risk" IsChecked="{Binding ShowRiskyOnly, Mode=TwoWay}"
                                   VerticalAlignment="Center" Margin="0,0,10,0"
                                   AutomationProperties.AutomationId="ShowRiskyOnlyCheckBox"
@@ -909,10 +913,14 @@
                                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
                                     <Button Content="⬆️" Style="{StaticResource InlineSmallButton}" Margin="0,0,4,0"
                                             ToolTip="Move up"
+                                            AutomationProperties.AutomationId="MoveUpButton"
+                                            AutomationProperties.Name="Move Up"
                                             Command="{Binding DataContext.MoveUpCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}"
                                             CommandParameter="{Binding}"/>
                                     <Button Content="⬇️" Style="{StaticResource InlineSmallButton}"
                                             ToolTip="Move down"
+                                            AutomationProperties.AutomationId="MoveDownButton"
+                                            AutomationProperties.Name="Move Down"
                                             Command="{Binding DataContext.MoveDownCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}"
                                             CommandParameter="{Binding}"/>
                                 </StackPanel>
@@ -1169,21 +1177,29 @@
                                                     <Button Width="30" Height="30" Padding="4" Margin="0,0,4,0" FontSize="14"
                                                             Style="{StaticResource InlineSmallButton}"
                                                             ToolTip="Select Winner"
+                                                            AutomationProperties.AutomationId="SelectWinnerButton"
+                                                            AutomationProperties.Name="Select Winner"
                                                             Command="{Binding DataContext.SelectConflictWinnerCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
                                                             CommandParameter="{Binding}">🏆</Button>
                                                     <Button Width="30" Height="30" Padding="4" Margin="0,0,4,0" FontSize="14"
                                                             Style="{StaticResource InlineSmallButton}"
                                                             ToolTip="Select Loser"
+                                                            AutomationProperties.AutomationId="SelectLoserButton"
+                                                            AutomationProperties.Name="Select Loser"
                                                             Command="{Binding DataContext.SelectConflictLoserCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
                                                             CommandParameter="{Binding}">🧯</Button>
                                                     <Button Width="30" Height="30" Padding="4" Margin="0,0,4,0" FontSize="14"
                                                             Style="{StaticResource InlineSmallButton}"
                                                             ToolTip="Make Loser Win"
+                                                            AutomationProperties.AutomationId="MakeLoserWinButton"
+                                                            AutomationProperties.Name="Make Loser Win"
                                                             Command="{Binding DataContext.MakeLoserWinCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
                                                             CommandParameter="{Binding}">⬆</Button>
                                                     <Button Width="30" Height="30" Padding="4" FontSize="14"
                                                             Style="{StaticResource InlineSmallButton}"
                                                             ToolTip="Lower Winner Priority"
+                                                            AutomationProperties.AutomationId="MoveWinnerDownButton"
+                                                            AutomationProperties.Name="Move Winner Down"
                                                             Command="{Binding DataContext.MoveWinnerDownCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
                                                             CommandParameter="{Binding}">⬇</Button>
                                                 </StackPanel>

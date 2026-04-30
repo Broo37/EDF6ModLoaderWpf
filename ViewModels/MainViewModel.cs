@@ -331,6 +331,7 @@ public partial class MainViewModel : ObservableObject
             HighRiskModCount = 0;
             ClearPresetState();
             ConflictReport.Clear();
+            ToggleConflictPanelCommand.NotifyCanExecuteChanged();
             IsConflictPanelVisible = false;
             StatusText = $"{profile.ShortName} is not configured. Open Settings to set up paths.";
         }
@@ -650,6 +651,23 @@ public partial class MainViewModel : ObservableObject
     private void HideConflictPanel()
     {
         IsConflictPanelVisible = false;
+    }
+
+    [RelayCommand(CanExecute = nameof(CanToggleConflictPanel))]
+    private void ToggleConflictPanel()
+    {
+        if (ConflictReport.Count == 0)
+        {
+            IsConflictPanelVisible = false;
+            return;
+        }
+
+        IsConflictPanelVisible = !IsConflictPanelVisible;
+    }
+
+    private bool CanToggleConflictPanel()
+    {
+        return ConflictReport.Count > 0;
     }
 
     [RelayCommand]
@@ -1381,6 +1399,7 @@ public partial class MainViewModel : ObservableObject
         foreach (var c in conflicts)
             ConflictReport.Add(c);
 
+        ToggleConflictPanelCommand.NotifyCanExecuteChanged();
         IsConflictPanelVisible = ConflictReport.Count > 0;
     }
 
@@ -1912,6 +1931,7 @@ public partial class MainViewModel : ObservableObject
 
         if (ActiveGame is not null)
         {
+            ActiveGame.RecentImports.RemoveAll(entry => string.IsNullOrWhiteSpace(entry.ModName));
             NormalizeRecentImports(ActiveGame.RecentImports);
             LatestRecentImport = ActiveGame.RecentImports
                 .OrderByDescending(entry => entry.ImportedAt)
